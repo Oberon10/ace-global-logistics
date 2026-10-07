@@ -28,3 +28,7 @@ Thumbs.db
 # Scratch
 scratch/
 */scratch/
+
+# AI agent instruction files
+CLAUDE.md
+AGENTS.md
