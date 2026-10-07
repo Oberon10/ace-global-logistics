@@ -1,0 +1,19 @@
+{
+  "name": "ace-global-logistics-monorepo",
+  "version": "1.0.0",
+  "description": "ACE Global Logistics Enterprise Platform",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend start",
+    "lint": "npm --prefix frontend run lint",
+    "dev:backend": "npm --prefix backend run dev",
+    "start:backend": "npm --prefix backend start",
+    "install:all": "npm --prefix frontend install && npm --prefix backend install",
+    "install:frontend": "npm --prefix frontend install",
+    "install:backend": "npm --prefix backend install",
+    "vite:dev": "npm --prefix frontend run vite:dev",
+    "vite:build": "npm --prefix frontend run vite:build"
+  }
+}
