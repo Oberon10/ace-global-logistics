@@ -1,0 +1,126 @@
+# ACE Logistics — Global Supply Chain & Intermodal Freight Network
+
+An enterprise-grade, modern logistics and freight management web application built with **React**, **Vite**, and **Vanilla CSS**. Features multi-modal cargo tracking, role-based portal security, real-time shipment status dispatching, and dynamic cascading geographical routing.
+
+---
+
+## 🚀 Key Features
+
+### 1. Multi-Portal Authentication & Access Control
+* **Three Dedicated Login Portals**:
+  * **Customer Portal**: For enterprise clients and private shippers to book consignments, view personal delivery histories, track cargo in real-time, and download official bills of lading.
+  * **Staff Dispatcher Console**: For terminal operators and logistics coordinators to update live status milestones, scan cargo intake, and manage dispatch manifests.
+  * **Executive Admin Command**: Comprehensive oversight across all global operations, live financial metrics, fleet capacity, and system settings.
+* **Administrative Clearance Exclusivity**:
+  * Exclusive administrative authority to audit, view, and provision login credentials for all staff personnel and customer accounts.
+  * Password visibility toggles with masked display by default (`••••••••••••`) and one-click credential clipboard copying.
+  * Dedicated personnel login dossiers detailing access scope, assigned hubs, and security tokens.
+
+### 2. Live Cargo Telemetry & Multi-Modal Tracking
+* Real-time search by tracking number (e.g. `ACE-770921-GH`, `ACE-884102-NL`, `ACE-109482-US`).
+* Visual shipment milestones timeline (air, ocean, road, rail) with completed, active, and scheduled checkpoints.
+* Interactive global vector route map showing live origin-to-destination carrier coordinates.
+* Printable and downloadable official **Bill of Lading / Consignment Receipt** modal.
+
+### 3. Send a Package & Instant Freight Quote
+* **Send a Package**: Multi-step booking wizard with cargo specification, sender/consignee data, and automatic rate computation.
+* **Cascading Geographical Selectors**: Country and city dropdowns featuring 30+ international trade nations and commercial shipping hubs, complete with fallback custom city entry.
+* **Get a Quote Calculator**: Interactive pricing estimation based on volumetric weight, freight modality (Express Air, Ocean FCL, Interstate Road, Intermodal Rail), and declared cargo value.
+
+### 4. Enterprise Design System & Dark / Light Theme
+* Sleek, high-contrast dark mode tailored for low-light terminal operations with crisp typography and accessibility compliance.
+* Instant light/dark mode toggle button located in the global header.
+* Fully responsive layout optimized for desktop command centers, tablets, and mobile courier devices.
+
+---
+
+## 📦 Project Structure
+
+```
+ACE-APP/
+├── public/
+│   ├── images/              # Logistics photography (air, ocean, road, rail, warehousing)
+│   ├── favicon.svg          # ACE brand mark
+│   └── logo-icon.svg        # Scalable SVG logo
+├── src/
+│   ├── assets/              # Static branding and hero background visuals
+│   ├── components/
+│   │   ├── DataTable.jsx         # Sortable, filterable freight manifests table
+│   │   ├── Footer.jsx            # Global site footer with quick links
+│   │   ├── InteractiveMap.jsx    # SVG carrier telemetry route visualization
+│   │   ├── Navbar.jsx            # Global navigation, dark mode toggle & portal dropdown
+│   │   ├── ReceiptModal.jsx      # Official bill of lading modal
+│   │   ├── Sidebar.jsx           # Role-tailored navigation sidebar
+│   │   ├── StatusBadge.jsx       # Status color-coded pill indicators
+│   │   └── TrackingTimeline.jsx  # Milestone delivery timeline
+│   ├── data/
+│   │   ├── locations.js          # Cascading countries and cities dataset
+│   │   └── shipments.js          # Telemetry records, users list, and known accounts
+│   ├── views/
+│   │   ├── HomeView.jsx               # Landing page with hero, tracking bar, and services
+│   │   ├── ServicesView.jsx           # Global logistics solutions & freight modes
+│   │   ├── AboutView.jsx              # Company history, certifications, and leadership
+│   │   ├── ContactView.jsx            # 24/7 global support & station inquiries
+│   │   ├── QuoteView.jsx              # Freight rate quote calculator
+│   │   ├── TrackingView.jsx           # Live cargo tracking & consignment receipt
+│   │   ├── ShipmentCreationView.jsx   # Package booking wizard
+│   │   ├── LoginView.jsx              # Customer, Staff, and Admin portal authentication
+│   │   ├── CustomerDashboardView.jsx  # Customer delivery records & bookings
+│   │   ├── StaffDashboardView.jsx     # Staff dispatcher console & milestone updates
+│   │   ├── AdminDashboardView.jsx     # Executive operations command center
+│   │   ├── AnalyticsView.jsx          # Fleet performance, revenue & SLA analytics
+│   │   └── UserManagementView.jsx     # Admin credentials & personnel management
+│   ├── App.jsx                        # Central view routing & state management
+│   ├── index.css                      # Core design system tokens, typography & dark mode
+│   └── main.jsx                       # Application entry point
+├── package.json
+└── vite.config.js
+```
+
+---
+
+## 🛠️ Getting Started
+
+### Prerequisites
+* [Node.js](https://nodejs.org/) (v18 or higher recommended)
+* `npm` package manager
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Oberon10/Ace-App.git
+   cd Ace-App
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Launch the development server:
+   ```bash
+   npm run dev
+   ```
+
+4. Build for production:
+   ```bash
+   npm run build
+   ```
+
+---
+
+## 🔑 Portal Access Credentials
+
+| Portal | Login Email | Assigned Role | Access Scope |
+| :--- | :--- | :--- | :--- |
+| **Customer Portal** | `k.mensah@goldcoasttrading.com` | Customer | Personal Deliveries & Tracking Telemetry |
+| **Customer Portal** | `j.devries@maersklog.nl` | Customer | Personal Deliveries & Tracking Telemetry |
+| **Staff Dispatcher** | `s.oconnor@acelogistics.com` | Staff Dispatcher | Terminal Dispatcher & Customer Console |
+| **Staff Dispatcher** | `r.mensah@acelogistics.com` | Staff Dispatcher | Kotoka Air Terminal Dispatch |
+| **Executive Admin** | `d.sterling@acelogistics.com` | Administrator | Full All-Portals Authority & Credential Oversight |
+
+---
+
+## 📄 License
+Proprietary — Developed for ACE Global Logistics Network.
