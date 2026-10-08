@@ -1,72 +1,108 @@
-// Import the Mongoose library to create schemas and models
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 // Define the User schema specifying structure, types, constraints, and validation rules
 const userSchema = new mongoose.Schema(
     {
-        // Full name of the user (e.g., John Doe)
+        // Full name of the user
         name: {
-            // Data type must be a string
             type: String,
-            // Field is mandatory for every user record
             required: [true, "Name is required"],
-            // Strips any leading or trailing whitespace from the entered name
             trim: true,
-            // Enforces minimum length constraint of 2 characters
             minlength: [2, "Name must be at least 2 characters long"],
-            // Enforces maximum length constraint of 100 characters
             maxlength: [100, "Name cannot exceed 100 characters"]
         },
         // Unique email address used as the primary login credential
         email: {
-            // Data type must be a string
             type: String,
-            // Field is mandatory
             required: [true, "Email address is required"],
-            // Enforces uniqueness across the MongoDB users collection with an index
             unique: true,
-            // Automatically converts the email to lowercase before storing
             lowercase: true,
-            // Strips whitespace around the email
             trim: true,
-            // Validates email format using standard regular expression pattern
             match: [
                 /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,})+$/,
                 "Please provide a valid email address"
             ]
         },
-        // Hashed password string (bcrypt hashed before persistence)
+        // Hashed password string (bcrypt hashed)
         password: {
-            // Data type must be a string
             type: String,
-            // Field is mandatory
             required: [true, "Password is required"],
-            // Requires minimum of 6 characters for security
             minlength: [6, "Password must be at least 6 characters long"]
         },
-        // Role of the user determining access privileges across the logistics platform
+        // Role of the user determining customer/client portal access
         role: {
-            // Data type must be a string
             type: String,
-            // Restricts role to one of the four predefined platform roles
             enum: {
-                // Array of allowed role values
-                values: ["CUSTOMER", "DRIVER", "DISPATCHER", "STAFF", "ADMIN"],
-                // Error message displayed when an invalid role is provided
-                message: "Role must be either CUSTOMER, DRIVER, DISPATCHER, STAFF, or ADMIN"
+                values: ["CUSTOMER", "CLIENT", "USER"],
+                message: "Role must be either CUSTOMER, CLIENT, or USER"
             },
-            // Defaults to standard customer role if not explicitly provided during registration
             default: "CUSTOMER"
+        },
+        // User metadata
+        phone: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+        company: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+        country: {
+            type: String,
+            trim: true,
+            default: "Ghana"
+        },
+        items: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+        station: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+        department: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+        status: {
+            type: String,
+            enum: ["ACTIVE", "INACTIVE", "SUSPENDED"],
+            default: "ACTIVE"
+        },
+        lastLogin: {
+            type: Date,
+            default: Date.now
         }
     },
     {
-        // Automatically injects createdAt and updatedAt ISO timestamp fields into each document
         timestamps: true
     }
 );
 
-// Create the Mongoose model from the schema or reuse existing model if already compiled
+// Pre-save hook: automatically hash password using bcrypt if newly set or modified
+userSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+    // Prevent double hashing if already bcrypt hashed
+    if (/^\$2[aby]\$\d{2}\$/.test(this.password)) return next();
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+});
+
+// Instance method to compare candidate password against hashed password
+userSchema.methods.comparePassword = async function (candidatePassword) {
+    return bcrypt.compare(candidatePassword, this.password);
+};
+
+// Create or reuse compiled Mongoose User model
 const User = mongoose.models.User || mongoose.model("User", userSchema);
 
-// Export the User model as the default ES module export
+// Export both named and default ES module export
+export { User };
 export default User;
