@@ -1,109 +1,244 @@
-// Import bcryptjs for secure asynchronous password hashing and salt generation
+// Import bcryptjs for secure password hashing and verification
 import bcrypt from "bcryptjs";
 
-// Import jsonwebtoken library to generate digitally signed JSON Web Tokens for authentication
+// Import jsonwebtoken for creating and signing authentication tokens
 import jwt from "jsonwebtoken";
 
-// Import the Mongoose User data model to query and persist user documents in MongoDB
+// Import isolated domain models
+import Admin from "../models/admin.js";
+import Staff from "../models/staff.js";
 import User from "../models/User.js";
 
-// Import database status checker
-import { isDatabaseConnected } from "../config/database.js";
+/**
+ * Seed initial administrative, staff, and customer accounts directly into MongoDB.
+ * Strictly separates admin records into the Admin collection, staff records into
+ * the Staff collection, and customer records into the User collection.
+ */
+export const seedDatabaseUsers = async () => {
+    try {
+        // -------------------------------------------------------------
+        // 1. SEED STRICT ADMINISTRATOR ACCOUNTS -> Admin collection
+        // -------------------------------------------------------------
+        const adminAccounts = [
+            {
+                name: "Derek Sterling",
+                email: "d.sterling@acelogistics.com",
+                password: "AdminSecurePass#2026",
+                role: "ADMIN",
+                title: "Executive Vice President of Operations",
+                clearanceLevel: "FULL_AUTHORITY",
+                securityToken: "ACE-SEC-2026",
+                department: "Global Operations Command",
+                phone: "+44 20 7946 0991",
+                twoFactorEnabled: true,
+                permissions: [
+                    "ALL_PORTALS",
+                    "MANAGE_USERS",
+                    "MANAGE_STAFF",
+                    "MANAGE_SHIPMENTS",
+                    "SYSTEM_AUDIT",
+                    "SECURITY_COMMAND",
+                    "FULL_AUTHORITY"
+                ],
+                status: "ACTIVE"
+            }
+        ];
 
-// Fallback in-memory user registry ensuring 100% uptime for authentication even when
-// MongoDB Atlas IP whitelist or cloud connection is unavailable
-const fallbackUsers = new Map();
-
-// Helper to seed initial accounts
-const seedFallbackAccounts = async () => {
-    const salt = await bcrypt.genSalt(10);
-    const accounts = [
-        {
-            _id: "usr-admin-1",
-            name: "David Sterling",
-            email: "d.sterling@acelogistics.com",
-            passwordRaw: "AdminSecurePass#2026",
-            role: "ADMIN",
-            department: "Global Operations Command"
-        },
-        {
-            _id: "usr-staff-1",
-            name: "Sarah O'Connor",
-            email: "s.oconnor@acelogistics.com",
-            passwordRaw: "StaffDispatchKey@99",
-            role: "STAFF",
-            department: "Terminal Dispatch (LHR)"
-        },
-        {
-            _id: "usr-staff-2",
-            name: "Robert Mensah",
-            email: "r.mensah@acelogistics.com",
-            passwordRaw: "KotokaDispatcher#44",
-            role: "STAFF",
-            department: "Kotoka Air Terminal Dispatch"
-        },
-        {
-            _id: "usr-staff-3",
-            name: "Operations Dispatcher",
-            email: "dispatch@acelogistics.com",
-            passwordRaw: "StaffDispatchKey@99",
-            role: "STAFF",
-            department: "Global Terminal Operations"
-        },
-        {
-            _id: "usr-cust-1",
-            name: "Kwame Mensah",
-            email: "k.mensah@goldcoasttrading.com",
-            passwordRaw: "KwameTrading#Accra24",
-            role: "CUSTOMER",
-            department: "Gold Coast Trading Ltd"
-        },
-        {
-            _id: "usr-cust-2",
-            name: "Jan De Vries",
-            email: "j.devries@maersklog.nl",
-            passwordRaw: "MaerskRotterdamPass@82",
-            role: "CUSTOMER",
-            department: "Maersk Logistics BV"
-        },
-        {
-            _id: "usr-cust-3",
-            name: "Enterprise Customer",
-            email: "customer@example.com",
-            passwordRaw: "CustomerPass#2026",
-            role: "CUSTOMER",
-            department: "Global Trading Partner"
+        for (const adm of adminAccounts) {
+            const exists = await Admin.findOne({ email: adm.email.toLowerCase() });
+            if (!exists) {
+                await Admin.create({
+                    name: adm.name,
+                    email: adm.email.toLowerCase(),
+                    password: adm.password,
+                    role: adm.role,
+                    title: adm.title,
+                    clearanceLevel: adm.clearanceLevel,
+                    securityToken: adm.securityToken,
+                    department: adm.department,
+                    phone: adm.phone,
+                    twoFactorEnabled: adm.twoFactorEnabled,
+                    permissions: adm.permissions,
+                    status: adm.status
+                });
+                console.log(`✅ Seeded Executive Administrator: ${adm.email} into Admin collection.`);
+            }
         }
-    ];
 
-    for (const acc of accounts) {
-        const hashedPassword = await bcrypt.hash(acc.passwordRaw, salt);
-        fallbackUsers.set(acc.email.toLowerCase(), {
-            _id: acc._id,
-            id: acc._id,
-            name: acc.name,
-            email: acc.email.toLowerCase(),
-            password: hashedPassword,
-            passwordRaw: acc.passwordRaw,
-            role: acc.role,
-            createdAt: new Date().toISOString()
+        // -------------------------------------------------------------
+        // 2. SEED STRICT OPERATIONAL STAFF ACCOUNTS -> Staff collection
+        // -------------------------------------------------------------
+        const staffAccounts = [
+            {
+                name: "Sarah O'Connor",
+                email: "s.oconnor@acelogistics.com",
+                password: "StaffDispatchKey@99",
+                role: "STAFF",
+                employeeId: "ACE-STF-0199",
+                department: "Terminal Dispatch (LHR)",
+                station: "Heathrow (LHR)",
+                phone: "+44 20 7946 0123",
+                shift: "ROTATING",
+                dutyStatus: "ON_DUTY",
+                accessScope: "Terminal Dispatcher & Customer Console Only",
+                permissions: [
+                    "DISPATCH_SHIPMENTS",
+                    "UPDATE_TRACKING",
+                    "SCAN_PACKAGES",
+                    "VIEW_TERMINAL_CONSIGNMENTS",
+                    "CUSTOMER_SUPPORT"
+                ],
+                status: "ACTIVE"
+            },
+            {
+                name: "Robert Mensah",
+                email: "r.mensah@acelogistics.com",
+                password: "KotokaDispatcher#44",
+                role: "DISPATCHER",
+                employeeId: "ACE-DISP-0044",
+                department: "Kotoka Air Terminal Dispatch",
+                station: "Kotoka (ACC)",
+                phone: "+233 24 412 3456",
+                shift: "MORNING",
+                dutyStatus: "ON_DUTY",
+                accessScope: "Terminal Dispatcher & Customer Console Only",
+                permissions: [
+                    "DISPATCH_SHIPMENTS",
+                    "UPDATE_TRACKING",
+                    "SCAN_PACKAGES",
+                    "VIEW_TERMINAL_CONSIGNMENTS",
+                    "CUSTOMER_SUPPORT"
+                ],
+                status: "ACTIVE"
+            },
+            {
+                name: "Operations Dispatcher",
+                email: "dispatch@acelogistics.com",
+                password: "StaffDispatchKey@99",
+                role: "STAFF",
+                employeeId: "ACE-OPS-0010",
+                department: "Global Terminal Operations",
+                station: "Global Dispatch",
+                phone: "+44 20 7946 0456",
+                shift: "ROTATING",
+                dutyStatus: "ON_DUTY",
+                accessScope: "Terminal Dispatcher & Customer Console Only",
+                permissions: [
+                    "DISPATCH_SHIPMENTS",
+                    "UPDATE_TRACKING",
+                    "SCAN_PACKAGES",
+                    "VIEW_TERMINAL_CONSIGNMENTS",
+                    "CUSTOMER_SUPPORT"
+                ],
+                status: "ACTIVE"
+            }
+        ];
+
+        for (const stf of staffAccounts) {
+            const exists = await Staff.findOne({ email: stf.email.toLowerCase() });
+            if (!exists) {
+                await Staff.create({
+                    name: stf.name,
+                    email: stf.email.toLowerCase(),
+                    password: stf.password,
+                    role: stf.role,
+                    employeeId: stf.employeeId,
+                    department: stf.department,
+                    station: stf.station,
+                    phone: stf.phone,
+                    shift: stf.shift,
+                    dutyStatus: stf.dutyStatus,
+                    accessScope: stf.accessScope,
+                    permissions: stf.permissions,
+                    status: stf.status
+                });
+                console.log(`✅ Seeded Operational Staff: ${stf.email} into Staff collection.`);
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 3. SEED STRICT CUSTOMER ACCOUNTS -> User collection
+        // -------------------------------------------------------------
+        const customerAccounts = [
+            {
+                name: "Kwame Mensah",
+                email: "k.mensah@goldcoasttrading.com",
+                password: "KwameTrading#Accra24",
+                role: "CUSTOMER",
+                company: "Gold Coast Trading Ltd",
+                country: "Ghana",
+                phone: "+233 55 892 4110",
+                items: "Cocoa, Shea Butter & Textiles"
+            },
+            {
+                name: "Jan De Vries",
+                email: "j.devries@maersklog.nl",
+                password: "MaerskRotterdamPass@82",
+                role: "CUSTOMER",
+                company: "Maersk Logistics BV",
+                country: "Netherlands",
+                phone: "+31 10 712 3456",
+                items: "Maritime Spares & Commercial Equipment"
+            },
+            {
+                name: "Enterprise Customer",
+                email: "customer@example.com",
+                password: "CustomerPass#2026",
+                role: "CUSTOMER",
+                company: "Global Logistics Partners Inc",
+                country: "United States",
+                phone: "+1 415 555 2671",
+                items: "Commercial Freight & Cargo"
+            }
+        ];
+
+        for (const cust of customerAccounts) {
+            const exists = await User.findOne({ email: cust.email.toLowerCase() });
+            if (!exists) {
+                await User.create({
+                    name: cust.name,
+                    email: cust.email.toLowerCase(),
+                    password: cust.password,
+                    role: cust.role,
+                    company: cust.company,
+                    country: cust.country,
+                    phone: cust.phone,
+                    items: cust.items || "General Cargo"
+                });
+                console.log(`✅ Seeded Customer Portal Account: ${cust.email} into User collection.`);
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 4. CLEANUP: Purge any legacy admin or staff entries from User collection
+        // -------------------------------------------------------------
+        await User.deleteMany({
+            email: {
+                $in: [
+                    "d.sterling@acelogistics.com",
+                    "s.oconnor@acelogistics.com",
+                    "r.mensah@acelogistics.com",
+                    "dispatch@acelogistics.com"
+                ]
+            }
         });
+
+    } catch (err) {
+        console.warn("⚠️ Account seed check notice:", err.message);
     }
 };
 
-// Seed fallback users immediately
-seedFallbackAccounts().catch(err => console.warn("Failed seeding in-memory accounts:", err));
-
 /**
- * Utility helper function to sign a JWT token with user identification and authorization claims.
+ * Utility helper function to sign a JWT token with user claims and identity type.
  */
-const generateToken = (user) => {
+export const generateToken = (user, userType = "USER") => {
     const secret = process.env.JWT_SECRET || "ace_logistics_jwt_super_secret_key_2026_secure_token";
     return jwt.sign(
         {
             id: user._id || user.id,
             role: user.role,
-            email: user.email
+            email: user.email,
+            userType
         },
         secret,
         {
@@ -113,12 +248,12 @@ const generateToken = (user) => {
 };
 
 /**
- * Controller: Register a new user account.
- * Works with MongoDB if connected, or seamlessly registers into high-availability fallback.
+ * Controller: Register a new customer user account in MongoDB.
+ * Strictly writes to the User collection.
  */
 export const register = async (req, res) => {
     try {
-        const { name, email, password, role } = req.body;
+        const { name, email, password, phone, company, country, items } = req.body;
 
         if (!name || !email || !password) {
             return res.status(400).json({
@@ -135,82 +270,51 @@ export const register = async (req, res) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const allowedRoles = ["CUSTOMER", "DRIVER", "DISPATCHER", "STAFF", "ADMIN"];
-        const userRole = role && allowedRoles.includes(role.toUpperCase())
-            ? role.toUpperCase()
-            : "CUSTOMER";
 
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
+        // Cross-collection uniqueness validation: verify email does not exist in Admin, Staff, or User
+        const [existingAdmin, existingStaff, existingUser] = await Promise.all([
+            Admin.findOne({ email: normalizedEmail }),
+            Staff.findOne({ email: normalizedEmail }),
+            User.findOne({ email: normalizedEmail })
+        ]);
 
-        // 1. If MongoDB is connected, attempt registration there
-        if (isDatabaseConnected()) {
-            try {
-                const existingUser = await User.findOne({ email: normalizedEmail });
-                if (existingUser) {
-                    return res.status(409).json({
-                        success: false,
-                        message: "An account with this email address already exists. Please login instead."
-                    });
-                }
-
-                const newUser = await User.create({
-                    name: name.trim(),
-                    email: normalizedEmail,
-                    password: hashedPassword,
-                    role: userRole
-                });
-
-                const token = generateToken(newUser);
-                return res.status(201).json({
-                    success: true,
-                    message: "User registered successfully.",
-                    token,
-                    user: {
-                        id: newUser._id,
-                        name: newUser.name,
-                        email: newUser.email,
-                        role: newUser.role,
-                        createdAt: newUser.createdAt
-                    }
-                });
-            } catch (dbErr) {
-                console.warn("⚠️ MongoDB registration error, falling back to local registry:", dbErr.message);
-            }
-        }
-
-        // 2. Fallback resilient registry
-        if (fallbackUsers.has(normalizedEmail)) {
+        if (existingAdmin || existingStaff || existingUser) {
             return res.status(409).json({
                 success: false,
                 message: "An account with this email address already exists. Please login instead."
             });
         }
 
-        const fallbackUser = {
-            _id: `usr-reg-${Date.now()}`,
-            id: `usr-reg-${Date.now()}`,
+        // Native Mongoose query: Create new customer user
+        const newUser = await User.create({
             name: name.trim(),
             email: normalizedEmail,
-            password: hashedPassword,
-            passwordRaw: password,
-            role: userRole,
-            createdAt: new Date().toISOString()
-        };
+            password: password,
+            role: "CUSTOMER",
+            phone: phone || "",
+            company: company || "",
+            country: country || "Ghana",
+            items: items || ""
+        });
 
-        fallbackUsers.set(normalizedEmail, fallbackUser);
-        const token = generateToken(fallbackUser);
+        const token = generateToken(newUser, "CUSTOMER");
 
         return res.status(201).json({
             success: true,
             message: "User registered successfully.",
             token,
             user: {
-                id: fallbackUser._id,
-                name: fallbackUser.name,
-                email: fallbackUser.email,
-                role: fallbackUser.role,
-                createdAt: fallbackUser.createdAt
+                id: newUser._id,
+                _id: newUser._id,
+                name: newUser.name,
+                email: newUser.email,
+                role: newUser.role,
+                phone: newUser.phone,
+                company: newUser.company,
+                country: newUser.country,
+                items: newUser.items,
+                userType: "CUSTOMER",
+                createdAt: newUser.createdAt
             }
         });
     } catch (error) {
@@ -224,8 +328,7 @@ export const register = async (req, res) => {
 };
 
 /**
- * Controller: Authenticate existing user with credentials and issue a JWT.
- * Resilient against database disconnections or network drops.
+ * Controller: Authenticate credentials with isolated queries against Admin, Staff, and User models.
  */
 export const login = async (req, res) => {
     try {
@@ -239,58 +342,140 @@ export const login = async (req, res) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        let user = null;
-        let isPasswordMatch = false;
 
-        // 1. Try MongoDB if connection is ready
-        if (isDatabaseConnected()) {
-            try {
-                user = await User.findOne({ email: normalizedEmail });
-                if (user) {
-                    isPasswordMatch = await bcrypt.compare(password, user.password);
-                }
-            } catch (dbErr) {
-                console.warn("⚠️ MongoDB query notice, falling back to local store:", dbErr.message);
-                user = null;
+        // -------------------------------------------------------------
+        // 1. Check Admin model strictly for administrator credentials
+        // -------------------------------------------------------------
+        const admin = await Admin.findOne({ email: normalizedEmail });
+        if (admin) {
+            const isMatch = await admin.comparePassword(password);
+            if (!isMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid email or password credentials."
+                });
             }
-        }
 
-        // 2. If not found in DB or DB is offline, check resilient fallback store
-        if (!user || !isPasswordMatch) {
-            const fallbackUser = fallbackUsers.get(normalizedEmail);
-            if (fallbackUser) {
-                const matchBcrypt = await bcrypt.compare(password, fallbackUser.password);
-                const matchRaw = fallbackUser.passwordRaw && fallbackUser.passwordRaw === password;
+            // Update admin login timestamp
+            admin.lastLogin = new Date();
+            await admin.save();
 
-                if (matchBcrypt || matchRaw) {
-                    user = fallbackUser;
-                    isPasswordMatch = true;
+            const token = generateToken(admin, "ADMIN");
+
+            return res.status(200).json({
+                success: true,
+                message: "Administrator login successful.",
+                token,
+                user: {
+                    id: admin._id,
+                    _id: admin._id,
+                    name: admin.name,
+                    email: admin.email,
+                    role: admin.role,
+                    title: admin.title,
+                    clearanceLevel: admin.clearanceLevel,
+                    securityToken: admin.securityToken,
+                    department: admin.department,
+                    phone: admin.phone,
+                    permissions: admin.permissions,
+                    status: admin.status,
+                    twoFactorEnabled: admin.twoFactorEnabled,
+                    userType: "ADMIN",
+                    createdAt: admin.createdAt
                 }
-            }
-        }
-
-        // Reject if neither DB nor fallback matched
-        if (!user || !isPasswordMatch) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password credentials."
             });
         }
 
-        // Generate signed JWT token
-        const token = generateToken(user);
-
-        return res.status(200).json({
-            success: true,
-            message: "Login successful.",
-            token,
-            user: {
-                id: user._id || user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                createdAt: user.createdAt || new Date().toISOString()
+        // -------------------------------------------------------------
+        // 2. Check Staff model strictly for staff / dispatcher credentials
+        // -------------------------------------------------------------
+        const staff = await Staff.findOne({ email: normalizedEmail });
+        if (staff) {
+            const isMatch = await staff.comparePassword(password);
+            if (!isMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid email or password credentials."
+                });
             }
+
+            // Update staff login timestamp
+            staff.lastLogin = new Date();
+            await staff.save();
+
+            const token = generateToken(staff, "STAFF");
+
+            return res.status(200).json({
+                success: true,
+                message: "Staff login successful.",
+                token,
+                user: {
+                    id: staff._id,
+                    _id: staff._id,
+                    name: staff.name,
+                    email: staff.email,
+                    role: staff.role,
+                    employeeId: staff.employeeId,
+                    station: staff.station,
+                    department: staff.department,
+                    shift: staff.shift,
+                    dutyStatus: staff.dutyStatus,
+                    phone: staff.phone,
+                    assignedVehicle: staff.assignedVehicle,
+                    licenseNumber: staff.licenseNumber,
+                    accessScope: staff.accessScope,
+                    permissions: staff.permissions,
+                    status: staff.status,
+                    userType: "STAFF",
+                    createdAt: staff.createdAt
+                }
+            });
+        }
+
+        // -------------------------------------------------------------
+        // 3. Check User model strictly for customer / client credentials
+        // -------------------------------------------------------------
+        const user = await User.findOne({ email: normalizedEmail });
+        if (user) {
+            const isMatch = await user.comparePassword(password);
+            if (!isMatch) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Invalid email or password credentials."
+                });
+            }
+
+            // Update user login timestamp
+            user.lastLogin = new Date();
+            await user.save();
+
+            const token = generateToken(user, "CUSTOMER");
+
+            return res.status(200).json({
+                success: true,
+                message: "Login successful.",
+                token,
+                user: {
+                    id: user._id,
+                    _id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    phone: user.phone,
+                    company: user.company,
+                    country: user.country,
+                    items: user.items,
+                    status: user.status,
+                    userType: "CUSTOMER",
+                    createdAt: user.createdAt
+                }
+            });
+        }
+
+        // No matching account found across Admin, Staff, or User
+        return res.status(401).json({
+            success: false,
+            message: "Invalid email or password credentials."
         });
     } catch (error) {
         console.error("❌ Error in login controller:", error);
@@ -303,45 +488,98 @@ export const login = async (req, res) => {
 };
 
 /**
- * Controller: Retrieve profile data of currently authenticated user.
+ * Controller: Retrieve profile data of currently authenticated user using Mongoose.
+ * Resolves across Admin, Staff, and User collections by userId.
  */
 export const getProfile = async (req, res) => {
     try {
         const userId = req.user?.id;
-        const userEmail = req.user?.email?.toLowerCase();
 
-        let user = null;
-
-        if (isDatabaseConnected() && userId) {
-            try {
-                user = await User.findById(userId).select("-password");
-            } catch {
-                user = null;
-            }
-        }
-
-        if (!user && userEmail && fallbackUsers.has(userEmail)) {
-            const fb = fallbackUsers.get(userEmail);
-            user = {
-                id: fb._id,
-                _id: fb._id,
-                name: fb.name,
-                email: fb.email,
-                role: fb.role,
-                createdAt: fb.createdAt
-            };
-        }
-
-        if (!user) {
-            return res.status(404).json({
+        if (!userId) {
+            return res.status(401).json({
                 success: false,
-                message: "User profile not found."
+                message: "Authentication token missing or invalid."
             });
         }
 
-        return res.status(200).json({
-            success: true,
-            user
+        // Check Admin collection
+        const admin = await Admin.findById(userId).select("-password");
+        if (admin) {
+            return res.status(200).json({
+                success: true,
+                user: {
+                    id: admin._id,
+                    _id: admin._id,
+                    name: admin.name,
+                    email: admin.email,
+                    role: admin.role,
+                    title: admin.title,
+                    clearanceLevel: admin.clearanceLevel,
+                    securityToken: admin.securityToken,
+                    department: admin.department,
+                    phone: admin.phone,
+                    permissions: admin.permissions,
+                    status: admin.status,
+                    twoFactorEnabled: admin.twoFactorEnabled,
+                    userType: "ADMIN",
+                    createdAt: admin.createdAt
+                }
+            });
+        }
+
+        // Check Staff collection
+        const staff = await Staff.findById(userId).select("-password");
+        if (staff) {
+            return res.status(200).json({
+                success: true,
+                user: {
+                    id: staff._id,
+                    _id: staff._id,
+                    name: staff.name,
+                    email: staff.email,
+                    role: staff.role,
+                    employeeId: staff.employeeId,
+                    station: staff.station,
+                    department: staff.department,
+                    shift: staff.shift,
+                    dutyStatus: staff.dutyStatus,
+                    phone: staff.phone,
+                    assignedVehicle: staff.assignedVehicle,
+                    licenseNumber: staff.licenseNumber,
+                    accessScope: staff.accessScope,
+                    permissions: staff.permissions,
+                    status: staff.status,
+                    userType: "STAFF",
+                    createdAt: staff.createdAt
+                }
+            });
+        }
+
+        // Check User collection
+        const user = await User.findById(userId).select("-password");
+        if (user) {
+            return res.status(200).json({
+                success: true,
+                user: {
+                    id: user._id,
+                    _id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    phone: user.phone,
+                    company: user.company,
+                    country: user.country,
+                    items: user.items,
+                    status: user.status,
+                    userType: "CUSTOMER",
+                    createdAt: user.createdAt
+                }
+            });
+        }
+
+        return res.status(404).json({
+            success: false,
+            message: "User profile not found."
         });
     } catch (error) {
         console.error("❌ Error in getProfile controller:", error);
@@ -356,5 +594,6 @@ export const getProfile = async (req, res) => {
 export default {
     register,
     login,
-    getProfile
+    getProfile,
+    seedDatabaseUsers
 };
