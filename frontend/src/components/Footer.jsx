@@ -16,7 +16,7 @@ import {
   Package
 } from 'lucide-react';
 
-export default function Footer({ setView }) {
+export default function Footer({ setView, onClearTracking }) {
   return (
     <footer style={{
       backgroundColor: 'var(--color-dark-navy)',
@@ -115,7 +115,14 @@ export default function Footer({ setView }) {
             </h4>
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px', padding: 0 }}>
               <li>
-                <Link href="/tracking" style={{ textDecoration: 'none', color: 'rgba(255, 255, 255, 0.75)' }}>
+                <Link 
+                  href="/tracking" 
+                  onClick={() => {
+                    if (onClearTracking) onClearTracking();
+                    if (setView) setView('track');
+                  }}
+                  style={{ textDecoration: 'none', color: 'rgba(255, 255, 255, 0.75)' }}
+                >
                   Track Shipment
                 </Link>
               </li>
@@ -252,6 +259,10 @@ export default function Footer({ setView }) {
           }}>
             <Link
               href="/tracking"
+              onClick={() => {
+                if (onClearTracking) onClearTracking();
+                if (setView) setView('track');
+              }}
               className="ace-btn ace-btn-action"
               style={{
                 width: '100%',
@@ -358,6 +369,10 @@ export default function Footer({ setView }) {
                 <li>
                   <Link 
                     href="/tracking" 
+                    onClick={() => {
+                      if (onClearTracking) onClearTracking();
+                      if (setView) setView('track');
+                    }}
                     style={{ color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontSize: '13px', display: 'block' }}
                   >
                     Track Shipment

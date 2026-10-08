@@ -23,6 +23,7 @@ export default function ClientShell({ children }) {
     receiptShipment,
     handleCloseReceipt,
     handleSearchTracking,
+    handleClearTracking,
     handleProceedToShipmentFromQuote,
     navigate
   } = useApp();
@@ -47,6 +48,7 @@ export default function ClientShell({ children }) {
           theme={theme}
           toggleTheme={toggleTheme}
           setLoginPortal={setLoginPortal}
+          onClearTracking={handleClearTracking}
         />
       )}
 
@@ -57,7 +59,10 @@ export default function ClientShell({ children }) {
 
       {/* Global Footer - hidden on dashboards and login */}
       {!isDashboardView && !isAuthView && (
-        <Footer setView={navigate} />
+        <Footer 
+          setView={navigate} 
+          onClearTracking={handleClearTracking}
+        />
       )}
 
       {/* Consignment Receipt Modal */}

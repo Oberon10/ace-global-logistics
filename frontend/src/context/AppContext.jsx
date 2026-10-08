@@ -115,6 +115,11 @@ export function AppProvider({ children }) {
   const navigate = (target) => {
     if (!target) return;
     const dest = ROUTE_MAP[target] || (target.startsWith('/') ? target : `/${target}`);
+    // Privacy protection: whenever navigating directly to public 'track' or away from tracking to another page,
+    // clear the previously searched shipment details so they are never retained or visible to another receiver
+    if (target === 'track' || dest !== '/tracking') {
+      handleClearTracking();
+    }
     router.push(dest);
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -132,7 +137,7 @@ export function AppProvider({ children }) {
       setSelectedShipment(null);
       setTrackingQuery('');
       setHasSearchedTracking(false);
-      navigate('/tracking');
+      router.push('/tracking');
       return;
     }
 
@@ -195,7 +200,7 @@ export function AppProvider({ children }) {
     }
 
     setSelectedShipment(found || null);
-    navigate('/tracking');
+    router.push('/tracking');
 
     setTimeout(() => {
       const detailsEl = document.getElementById('shipment-telemetry-root') || 
@@ -213,7 +218,7 @@ export function AppProvider({ children }) {
       setTrackingQuery(shipment.trackingNumber || shipment.id || '');
       setHasSearchedTracking(true);
     }
-    navigate('/tracking');
+    router.push('/tracking');
     setTimeout(() => {
       const detailsEl = document.getElementById('shipment-telemetry-root') || 
                         document.getElementById('shipment-details-section');

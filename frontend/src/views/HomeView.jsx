@@ -18,7 +18,8 @@ import {
   Anchor, 
   Compass,
   RefreshCw,
-  Radio
+  Radio,
+  X
 } from 'lucide-react';
 import TestimonialsSection from '../components/TestimonialsSection';
 
@@ -36,6 +37,7 @@ export default function HomeView({
     const query = trackingInput.trim();
     if (!query) return;
     setIsSearching(true);
+    setTrackingInput('');
     setTimeout(() => {
       setIsSearching(false);
       onSearchTracking(query);
@@ -282,6 +284,10 @@ export default function HomeView({
                   <input
                     id="home-consignment-input"
                     type="text"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
                     className="ace-input ace-input-with-icon"
                     placeholder="Enter your registered tracking number (e.g. ACE-2T34-79011)"
                     value={trackingInput}
@@ -296,9 +302,32 @@ export default function HomeView({
                       color: '#0F172A',
                       borderRadius: '10px',
                       paddingLeft: '44px',
-                      paddingRight: '14px'
+                      paddingRight: trackingInput ? '40px' : '14px'
                     }}
                   />
+                  {trackingInput && (
+                    <button
+                      type="button"
+                      onClick={() => setTrackingInput('')}
+                      aria-label="Clear tracking input"
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#64748B',
+                        padding: '4px'
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
 
                 <button

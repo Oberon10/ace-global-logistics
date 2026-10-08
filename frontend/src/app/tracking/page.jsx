@@ -27,6 +27,14 @@ function TrackingContent() {
     }
   }, [qParam]);
 
+  // Privacy Protection: When leaving the tracking page, automatically clear
+  // shipment details and query so that another receiver does not see previous delivery info
+  useEffect(() => {
+    return () => {
+      handleClearTracking();
+    };
+  }, []);
+
   return (
     <TrackingView 
       shipment={selectedShipment}

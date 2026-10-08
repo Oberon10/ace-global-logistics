@@ -25,7 +25,8 @@ import {
   FileText,
   CheckCircle2,
   HelpCircle,
-  Radio
+  Radio,
+  X
 } from 'lucide-react';
 
 // Determine Transport Icon based on shipping method
@@ -267,6 +268,10 @@ export default function TrackingView({
               <input
                 id="consignment-input"
                 type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
                 className="ace-input ace-input-with-icon tracking-number-input"
                 placeholder="Enter your registered tracking number (e.g. ACE-2T34-79011)"
                 value={searchInput}
@@ -283,12 +288,44 @@ export default function TrackingView({
                   backgroundColor: 'var(--color-white)',
                   border: '1.5px solid var(--color-border)',
                   paddingLeft: '44px',
-                  paddingRight: '14px',
+                  paddingRight: searchInput ? '42px' : '14px',
                   borderRadius: '10px',
                   boxSizing: 'border-box',
                   boxShadow: '0 1px 3px rgba(11, 79, 124, 0.05)'
                 }}
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  id="clear-tracking-input-btn"
+                  onClick={() => {
+                    setSearchInput('');
+                    if (onClearTracking) onClearTracking();
+                  }}
+                  title="Clear tracking input"
+                  aria-label="Clear tracking input"
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    padding: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    borderRadius: '50%',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--status-cancelled-color)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
 
             <button
@@ -439,6 +476,23 @@ export default function TrackingView({
                   <FileText size={14} />
                   <span>Bill of Lading / Receipt</span>
                 </button>
+
+                {onClearTracking && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('');
+                      onClearTracking();
+                    }}
+                    className="ace-btn ace-btn-ghost ace-btn-sm"
+                    style={{ color: '#DC2626', borderColor: '#FECACA', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    title="Clear tracking results"
+                    id="telemetry-clear-reset-btn"
+                  >
+                    <X size={14} />
+                    <span>Clear & Reset</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -956,6 +1010,47 @@ export default function TrackingView({
                 </div>
 
               </div>
+            </div>
+
+            {/* Privacy Protection & Track Another Consignment Bar */}
+            <div style={{
+              marginTop: '24px',
+              textAlign: 'center',
+              backgroundColor: 'var(--color-white)',
+              padding: '20px 24px',
+              borderRadius: '12px',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <ShieldCheck size={16} color="#10B981" />
+                <span>Receiver Privacy Protected: Delivery details and tracking references are not retained between sessions.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput('');
+                  if (onClearTracking) onClearTracking();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="ace-btn ace-btn-secondary"
+                id="track-another-shipment-btn"
+                style={{
+                  padding: '11px 26px',
+                  fontSize: '14.5px',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <Search size={16} />
+                <span>Track Another Shipment (Clear Results)</span>
+              </button>
             </div>
           </div>
         ) : hasSearched ? (

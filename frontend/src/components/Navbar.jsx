@@ -26,7 +26,8 @@ export default function Navbar({
   onLogout, 
   theme = 'light', 
   toggleTheme, 
-  setLoginPortal 
+  setLoginPortal,
+  onClearTracking
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
@@ -100,6 +101,9 @@ export default function Navbar({
   ];
 
   const handleNavClick = (viewId) => {
+    if ((viewId === 'track' || viewId === '/tracking') && onClearTracking) {
+      onClearTracking();
+    }
     if (setView) setView(viewId);
     setMobileMenuOpen(false);
     if (typeof window !== 'undefined') {
@@ -487,7 +491,12 @@ export default function Navbar({
               <Link
                 key={link.id}
                 href={link.href}
-                onClick={() => handleNavClick(link.id)}
+                onClick={() => {
+                  if (link.id === 'track' && onClearTracking) {
+                    onClearTracking();
+                  }
+                  handleNavClick(link.id);
+                }}
                 style={{
                   background: 'none',
                   border: 'none',
