@@ -25,7 +25,6 @@ import {
   RefreshCw,
   Shield
 } from 'lucide-react';
-import { syncCustomerToSupabase } from '../lib/supabase';
 
 export default function UserManagementView({ 
   setView, 
@@ -160,17 +159,28 @@ export default function UserManagementView({
         filtered.push(created);
         localStorage.setItem('ace_registered_customers', JSON.stringify(filtered));
 
-        // Sync new customer directly to Supabase customers table
-        syncCustomerToSupabase({
-          name: newUserName,
-          emailAddress: newUserEmail,
-          phoneNumber: newUserPhone,
-          country: newUserLocation || 'Ghana',
-          password: newUserPassword,
-          items: 'General Commercial Cargo & Freight'
+        // Sync new customer directly to MongoDB via backend REST API
+        const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? 'http://localhost:5000/api/auth/register'
+          : '/api/auth/register';
+
+        fetch(backendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newUserName,
+            email: newUserEmail,
+            password: newUserPassword || 'CustomerPass#2026',
+            role: 'CUSTOMER',
+            phone: newUserPhone,
+            country: newUserLocation || 'Ghana',
+            items: 'General Commercial Cargo & Freight'
+          })
+        }).catch(err => {
+          console.warn('Backend MongoDB customer registration notice:', err);
         });
       } catch (err) {
-        console.error('Failed to sync customer to localStorage or Supabase', err);
+        console.error('Failed to sync customer to storage', err);
       }
     }
 

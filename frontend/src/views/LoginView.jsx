@@ -23,11 +23,8 @@ import {
   Moon,
   Sparkles,
   Send,
-  Fingerprint,
-  Smartphone,
-  Wallet
+  Fingerprint
 } from 'lucide-react';
-import { syncCustomerToSupabase, supabase } from '../lib/supabase';
 
 // Helper to retrieve all registered customers (merging pre-configured accounts with localStorage)
 export function getRegisteredCustomers() {
@@ -291,29 +288,32 @@ export default function LoginView({
         body: JSON.stringify({ email: cleanEmail, password: cleanPassword })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.user) {
-          const rawRole = (data.user.role || '').toLowerCase();
-          const targetRole = (rawRole === 'dispatcher' || rawRole === 'driver' || rawRole === 'staff')
-            ? 'staff'
-            : (rawRole === 'admin')
-            ? 'admin'
-            : 'customer';
+      const data = await res.json().catch(() => null);
 
-          if (data.token) {
-            try { localStorage.setItem('ace_auth_token', data.token); } catch {}
-          }
+      if (res.ok && data?.success && data?.user) {
+        const rawRole = (data.user.role || '').toLowerCase();
+        const targetRole = (rawRole === 'dispatcher' || rawRole === 'driver' || rawRole === 'staff')
+          ? 'staff'
+          : (rawRole === 'admin')
+          ? 'admin'
+          : 'customer';
 
-          setIsSubmitting(false);
-          onLoginSuccess(targetRole, {
-            ...data.user,
-            role: targetRole,
-            token: data.token,
-            station: selectedPortal === 'staff' ? staffStation : undefined
-          });
-          return;
+        if (data.token) {
+          try { localStorage.setItem('ace_auth_token', data.token); } catch {}
         }
+
+        setIsSubmitting(false);
+        onLoginSuccess(targetRole, {
+          ...data.user,
+          role: targetRole,
+          token: data.token,
+          station: selectedPortal === 'staff' ? staffStation : undefined
+        });
+        return;
+      } else if (res.status === 401 || res.status === 400) {
+        setIsSubmitting(false);
+        setPasswordError(data?.message || 'Invalid email or password credentials.');
+        return;
       }
     } catch {
       // Backend unavailable or network error: seamlessly proceed to local verification below
@@ -388,38 +388,6 @@ export default function LoginView({
       const registeredCustomers = getRegisteredCustomers();
       let matchedCustomer = registeredCustomers.find(c => c.email?.trim().toLowerCase() === cleanEmail);
 
-      // Query Supabase database if not in cache
-      if (!matchedCustomer) {
-        try {
-          const { data, error } = await supabase
-            .from('customers')
-            .select('*')
-            .or(`email_address.eq.${cleanEmail},"email address".eq.${cleanEmail}`);
-
-          if (!error && data && data.length > 0) {
-            const dbCust = data[0];
-            matchedCustomer = {
-              id: dbCust.id,
-              supabaseId: dbCust.id,
-              name: `${dbCust.first_name || dbCust['first name'] || ''} ${dbCust.last_name || dbCust['last name'] || ''}`.trim() || 'Customer',
-              firstName: dbCust.first_name || dbCust['first name'],
-              lastName: dbCust.last_name || dbCust['last name'],
-              email: dbCust.email_address || dbCust['email address'],
-              loginPassword: dbCust.password,
-              country: dbCust.country || 'Ghana',
-              phone: dbCust.phone_number || dbCust['phone number'],
-              items: dbCust.items || 'General Cargo',
-              company: `${dbCust.first_name || 'Customer'}'s Enterprise`,
-              role: 'customer',
-              syncedToSupabase: true
-            };
-            saveRegisteredCustomer(matchedCustomer);
-          }
-        } catch (err) {
-          console.warn('Supabase customer login lookup notice:', err);
-        }
-      }
-
       if (!matchedCustomer) {
         setIsSubmitting(false);
         setPasswordError('Account not found. Click "Sign Up" above to register or click a Quick Demo Fill account.');
@@ -462,69 +430,91 @@ export default function LoginView({
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || 'Valued Customer';
     const cleanEmail = signupEmail.trim().toLowerCase();
 
-    // 1. Register with Backend API
+    // 1. Register with Backend API (MongoDB)
     try {
       const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://localhost:5000/api/auth/register'
         : '/api/auth/register';
 
-      fetch(backendUrl, {
+      const res = await fetch(backendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: fullName,
           email: cleanEmail,
           password: signupPassword,
-          role: 'CUSTOMER'
+          role: 'CUSTOMER',
+          country,
+          phone: phoneNumber.trim(),
+          items: items.trim()
         })
-      }).then(r => r.json()).then(data => {
-        if (data.token) {
-          try { localStorage.setItem('ace_auth_token', data.token); } catch {}
-        }
-      }).catch(() => {});
-    } catch {
-      // ignore
-    }
+      });
 
-    // 2. Sync to Supabase Cloud Database
-    const syncResult = await syncCustomerToSupabase({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      emailAddress: cleanEmail,
-      country,
-      phoneNumber: phoneNumber.trim(),
-      password: signupPassword,
-      items: items.trim()
-    });
+      const data = await res.json().catch(() => null);
 
-    const newCustomer = {
-      id: syncResult.data?.id || `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
-      supabaseId: syncResult.data?.id,
-      name: fullName,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: cleanEmail,
-      loginPassword: signupPassword,
-      company: `${firstName.trim() || 'Customer'}'s Commercial Enterprise`,
-      country,
-      phone: phoneNumber.trim(),
-      items: items.trim(),
-      role: 'customer',
-      status: 'Active',
-      registeredAt: new Date().toISOString(),
-      syncedToSupabase: syncResult.success
-    };
+      if (!res.ok) {
+        setIsSubmitting(false);
+        setPasswordError(data?.message || 'Registration failed. An account with this email may already exist.');
+        return;
+      }
 
-    saveRegisteredCustomer(newCustomer);
+      if (data?.token) {
+        try { localStorage.setItem('ace_auth_token', data.token); } catch {}
+      }
 
-    if (rememberMe) {
-      try { localStorage.setItem('ace_remembered_email', cleanEmail); } catch {}
-    }
+      const newCustomer = {
+        id: data?.user?.id || data?.user?._id || `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+        name: fullName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: cleanEmail,
+        loginPassword: signupPassword,
+        company: `${firstName.trim() || 'Customer'}'s Commercial Enterprise`,
+        country,
+        phone: phoneNumber.trim(),
+        items: items.trim(),
+        role: 'customer',
+        token: data?.token,
+        status: 'Active',
+        registeredAt: new Date().toISOString()
+      };
 
-    setTimeout(() => {
+      saveRegisteredCustomer(newCustomer);
+
+      if (rememberMe) {
+        try { localStorage.setItem('ace_remembered_email', cleanEmail); } catch {}
+      }
+
       setIsSubmitting(false);
       onLoginSuccess('customer', newCustomer);
-    }, 400);
+      return;
+    } catch {
+      // Offline fallback: save locally and login
+      const fallbackCustomer = {
+        id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
+        name: fullName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: cleanEmail,
+        loginPassword: signupPassword,
+        company: `${firstName.trim() || 'Customer'}'s Commercial Enterprise`,
+        country,
+        phone: phoneNumber.trim(),
+        items: items.trim(),
+        role: 'customer',
+        status: 'Active',
+        registeredAt: new Date().toISOString()
+      };
+
+      saveRegisteredCustomer(fallbackCustomer);
+
+      if (rememberMe) {
+        try { localStorage.setItem('ace_remembered_email', cleanEmail); } catch {}
+      }
+
+      setIsSubmitting(false);
+      onLoginSuccess('customer', fallbackCustomer);
+    }
   };
 
   // Biometric Instant Auth
@@ -587,19 +577,33 @@ export default function LoginView({
         role: 'customer'
       };
     } else {
-      const syncRes = await syncCustomerToSupabase({
-        firstName: fName,
-        lastName: lName,
-        emailAddress: cleanEmail,
-        country: country || 'Ghana',
-        phoneNumber: phoneNumber || '+233 55 892 4110',
-        password: `SSO-${provider}-Auth`,
-        items: items || 'General Commercial Merchandise'
-      });
+      // Register SSO customer with MongoDB backend API
+      try {
+        const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? 'http://localhost:5000/api/auth/register'
+          : '/api/auth/register';
+
+        const res = await fetch(backendUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: cleanName,
+            email: cleanEmail,
+            password: `SSO-${provider}-Auth-2026`,
+            role: 'CUSTOMER',
+            country: country || 'Ghana',
+            phone: phoneNumber || '+233 55 892 4110',
+            items: items || 'General Commercial Merchandise'
+          })
+        });
+        const data = await res.json().catch(() => null);
+        if (data?.token) {
+          try { localStorage.setItem('ace_auth_token', data.token); } catch {}
+        }
+      } catch {}
 
       customerObj = {
-        id: syncRes.data?.id || `CUST-SSO-${Math.floor(1000 + Math.random() * 9000)}`,
-        supabaseId: syncRes.data?.id,
+        id: `CUST-SSO-${Math.floor(1000 + Math.random() * 9000)}`,
         name: cleanName,
         firstName: fName,
         lastName: lName,
@@ -610,8 +614,7 @@ export default function LoginView({
         items: items || 'General Commercial Merchandise',
         company: `${cleanName}'s Trading Co`,
         role: 'customer',
-        provider,
-        syncedToSupabase: syncRes.success
+        provider
       };
 
       saveRegisteredCustomer(customerObj);

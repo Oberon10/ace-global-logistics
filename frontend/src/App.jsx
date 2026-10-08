@@ -64,12 +64,20 @@ export default function App() {
   // Central Reactive Shipments Repository: Erased all mock shipments, only registered consignments exist
   const [shipments, setShipments] = useState(() => {
     try {
-      // Clear any legacy mock shipments
       localStorage.removeItem('ace_shipments');
       localStorage.removeItem('ace_mock_shipments');
       const stored = localStorage.getItem('ace_registered_consignments');
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const seen = new Set();
+          return parsed.filter(s => {
+            const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }
       }
     } catch {
       // ignore
@@ -165,9 +173,18 @@ export default function App() {
     setReceiptModalOpen(true);
   };
 
-  // New Shipment Created
+  // New Shipment Created (Strict Single Instance per Creation)
   const handleShipmentCreated = (newShipment, postAction = null) => {
+    if (!newShipment) return;
+
     setShipments(prev => {
+      const trackingKey = (newShipment.trackingNumber || newShipment.id || '').trim().toUpperCase();
+      const alreadyExists = prev.some(s => (s.trackingNumber || s.id || '').trim().toUpperCase() === trackingKey);
+      
+      if (alreadyExists) {
+        return prev; // Prevent duplicate entries
+      }
+
       const updated = [newShipment, ...prev];
       try {
         localStorage.setItem('ace_registered_consignments', JSON.stringify(updated));
@@ -176,6 +193,7 @@ export default function App() {
       }
       return updated;
     });
+
     setSelectedShipment(newShipment);
 
     if (postAction === 'view-details') {
