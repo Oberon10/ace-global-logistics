@@ -13,9 +13,7 @@ import {
   CheckCircle2, 
   ShieldCheck, 
   Printer, 
-  Eye,
-  FileText,
-  Globe
+  Eye
 } from 'lucide-react';
 import { COUNTRY_LIST, getCitiesForCountry } from '../data/locations';
 import { generateTrackingNumber } from '../data/shipments';
@@ -181,6 +179,7 @@ export default function ShipmentCreationView({
   const cost = calculateCost();
 
   const handleConfirmShipment = () => {
+    if (isSubmitting || createdShipment) return;
     setIsSubmitting(true);
 
     setTimeout(() => {

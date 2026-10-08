@@ -77,7 +77,14 @@ export function AppProvider({ children }) {
       if (storedShipments) {
         const parsed = JSON.parse(storedShipments);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setShipments(parsed);
+          const seen = new Set();
+          const deduplicated = parsed.filter(s => {
+            const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setShipments(deduplicated);
         }
       }
     } catch (err) {
@@ -188,9 +195,18 @@ export function AppProvider({ children }) {
     setReceiptShipment(null);
   };
 
-  // Shipment Creation
+  // Shipment Creation (Strict Single Instance per Creation)
   const handleShipmentCreated = (newShipment, postAction = null) => {
+    if (!newShipment) return;
+
     setShipments(prev => {
+      const trackingKey = (newShipment.trackingNumber || newShipment.id || '').trim().toUpperCase();
+      const alreadyExists = prev.some(s => (s.trackingNumber || s.id || '').trim().toUpperCase() === trackingKey);
+
+      if (alreadyExists) {
+        return prev; // Prevent duplicate entries
+      }
+
       const updated = [newShipment, ...prev];
       try {
         localStorage.setItem('ace_registered_consignments', JSON.stringify(updated));
@@ -199,6 +215,7 @@ export function AppProvider({ children }) {
       }
       return updated;
     });
+
     setSelectedShipment(newShipment);
 
     if (postAction === 'view-details') {

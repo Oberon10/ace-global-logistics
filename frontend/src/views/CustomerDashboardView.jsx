@@ -9,7 +9,6 @@ import {
   CheckCircle2, 
   XCircle, 
   PlusCircle, 
-  FileText, 
   Search, 
   Clock, 
   ArrowRight,
@@ -21,7 +20,6 @@ import {
   AlertCircle,
   Plane,
   Ship,
-  Calendar,
   Check,
   FileCheck,
   X
@@ -160,22 +158,6 @@ export default function CustomerDashboardView({
           </div>
 
           <div className="dashboard-header-actions" style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={() => { setAppointmentStep('form'); setShowAppointmentModal(true); }}
-              className="ace-btn ace-btn-secondary"
-            >
-              <Calendar size={15} />
-              <span>Book Appointment</span>
-            </button>
-
-            <button
-              onClick={() => setView('quote')}
-              className="ace-btn ace-btn-secondary"
-            >
-              <FileText size={15} />
-              <span>Get Rate Quote</span>
-            </button>
-
             <button
               onClick={() => setView('new-shipment')}
               className="ace-btn ace-btn-action"
@@ -562,20 +544,13 @@ export default function CustomerDashboardView({
               There are currently no shipments or deliveries registered under <strong>{user.name}</strong> ({user.email || 'this account'}). 
               Only packages booked by you or dispatched to your address will be displayed here.
             </p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
               <button
                 onClick={() => setView('new-shipment')}
                 className="ace-btn ace-btn-action"
               >
                 <PlusCircle size={15} />
                 <span>Book Your First Shipment</span>
-              </button>
-              <button
-                onClick={() => setView('quote')}
-                className="ace-btn ace-btn-secondary"
-              >
-                <FileText size={15} />
-                <span>Get a Rate Quote</span>
               </button>
             </div>
           </div>

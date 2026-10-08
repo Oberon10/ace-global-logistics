@@ -603,25 +603,16 @@ export default function HomeView({
       <TestimonialsSection />
 
       {/* ===================================================
-          CALL TO ACTION BANNER
+          GLOBAL LOGISTICS NETWORK & SUPPLY CHAIN BANNER
           =================================================== */}
-      <section className="ace-cta-banner">
-        <div className="ace-container" style={{ textAlign: 'center', maxWidth: '820px', margin: '0 auto' }}>
-          <h2 style={{ fontSize: '28px', color: '#FFFFFF', fontWeight: 800, marginBottom: '12px' }}>
-            Ready to Streamline Your Supply Chain?
+      <section className="ace-cta-banner" style={{ padding: '48px 0' }}>
+        <div className="ace-container" style={{ textAlign: 'center', maxWidth: '860px', margin: '0 auto' }}>
+          <h2 style={{ fontSize: 'clamp(22px, 3.5vw, 30px)', color: '#FFFFFF', fontWeight: 800, marginBottom: '14px', letterSpacing: '-0.01em' }}>
+            Global Supply Chain Infrastructure & Freight Reliability
           </h2>
-          <p style={{ fontSize: '15px', color: '#D9E7F0', lineHeight: 1.6, marginBottom: '24px' }}>
-            Open an ACE Logistics corporate account today for priority scheduling, volume discounts, and full API integration.
+          <p style={{ fontSize: '15.5px', color: '#E2EEF7', lineHeight: 1.7, margin: '0 auto', maxWidth: '780px' }}>
+            ACE Global Logistics orchestrates resilient intermodal freight transport, bonded customs warehousing, and satellite-monitored cargo handling across primary air, maritime, and overland commercial trade corridors worldwide.
           </p>
-          <div className="cta-banner-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <button onClick={handleSendPackage} className="ace-btn ace-btn-action ace-btn-lg">
-              <span>Book Your First Shipment</span>
-              <ArrowRight size={16} />
-            </button>
-            <button onClick={() => setView('login')} className="ace-btn ace-btn-secondary ace-btn-lg">
-              <span>Client Portal Sign In</span>
-            </button>
-          </div>
         </div>
       </section>
 
