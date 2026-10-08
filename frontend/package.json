@@ -13,7 +13,6 @@
     "vite:preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.116.0",
     "lucide-react": "^1.45.0",
     "next": "^16.3.8",
     "react": "^19.2.8",
