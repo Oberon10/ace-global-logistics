@@ -12,10 +12,9 @@ const chatSchema = new mongoose.Schema(
             trim: true,
             index: true
         },
-        // Optional reference to authenticated user document
+        // Optional user reference or identifier (ObjectId or custom string)
         userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
+            type: mongoose.Schema.Types.Mixed,
             default: null
         },
         // Optional user email for tracking guest or logged-in interactions

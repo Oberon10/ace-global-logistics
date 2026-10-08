@@ -17,12 +17,7 @@ import {
   Train, 
   RotateCcw, 
   ExternalLink, 
-  AlertCircle,
-  Check,
-  CheckCheck,
-  Sparkles,
-  Paperclip,
-  Smile
+  Sparkles
 } from 'lucide-react';
 import { COUNTRY_LIST, getCitiesForCountry } from '../data/locations';
 

@@ -82,8 +82,8 @@ const shipmentSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             // Relates to the User model
             ref: "User",
-            // Sender is mandatory
-            required: [true, "Shipment sender reference is required"]
+            // Sender can be null for guest or operations desk bookings
+            default: null
         },
         // Reference to the assigned driver responsible for physical transit and delivery
         assignedDriver: {

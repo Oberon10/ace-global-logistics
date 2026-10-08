@@ -22,8 +22,6 @@ import {
   User,
   Building,
   DollarSign,
-  Compass,
-  Radio,
   FileText,
   CheckCircle2,
   HelpCircle
@@ -103,7 +101,10 @@ export default function TrackingView({
     }, 600);
   };
 
-  const TransportIcon = shipment ? getTransportIcon(shipment.methodType || shipment.method) : Plane;
+  const renderTransportIcon = (props) => {
+    const Icon = shipment ? getTransportIcon(shipment.methodType || shipment.method) : Plane;
+    return <Icon {...props} />;
+  };
 
   // Calculate Milestone Progress Stepper
   const getMilestoneSteps = () => {
@@ -470,7 +471,7 @@ export default function TrackingView({
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <TransportIcon size={14} color="var(--color-bright-action)" />
+                      {renderTransportIcon({ size: 14, color: "var(--color-bright-action)" })}
                       <span>Service Tier: <strong style={{ color: 'var(--text-primary)' }}>{shipment.method}</strong></span>
                     </div>
                     <span>•</span>

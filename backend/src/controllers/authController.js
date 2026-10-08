@@ -1,3 +1,6 @@
+// Import Mongoose ODM library
+import mongoose from "mongoose";
+
 // Import bcryptjs for secure password hashing and verification
 import bcrypt from "bcryptjs";
 
@@ -502,8 +505,26 @@ export const getProfile = async (req, res) => {
             });
         }
 
-        // Check Admin collection
-        const admin = await Admin.findById(userId).select("-password");
+        // Resolve profile across Admin, Staff, or User models (with CastError protection)
+        let admin = null;
+        let staff = null;
+        let user = null;
+
+        if (mongoose.Types.ObjectId.isValid(userId)) {
+            admin = await Admin.findById(userId).select("-password");
+            if (!admin) staff = await Staff.findById(userId).select("-password");
+            if (!admin && !staff) user = await User.findById(userId).select("-password");
+        } else {
+            // Fallback lookup by verified token email
+            const email = req.user?.email ? req.user.email.toLowerCase() : null;
+            if (email) {
+                admin = await Admin.findOne({ email }).select("-password");
+                if (!admin) staff = await Staff.findOne({ email }).select("-password");
+                if (!admin && !staff) user = await User.findOne({ email }).select("-password");
+            }
+        }
+
+        // Return Admin Profile
         if (admin) {
             return res.status(200).json({
                 success: true,
@@ -527,8 +548,7 @@ export const getProfile = async (req, res) => {
             });
         }
 
-        // Check Staff collection
-        const staff = await Staff.findById(userId).select("-password");
+        // Return Staff Profile
         if (staff) {
             return res.status(200).json({
                 success: true,
@@ -555,8 +575,7 @@ export const getProfile = async (req, res) => {
             });
         }
 
-        // Check User collection
-        const user = await User.findById(userId).select("-password");
+        // Return Customer Profile
         if (user) {
             return res.status(200).json({
                 success: true,

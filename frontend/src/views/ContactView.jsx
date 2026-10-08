@@ -7,24 +7,17 @@ import {
   CheckCircle2, 
   Building2, 
   ShieldCheck, 
-  Globe2, 
   Radio,
   Zap,
   Calendar,
   ArrowRight,
-  ExternalLink,
   MessageSquare,
   AlertTriangle,
-  Plane,
-  Ship,
   UserCheck,
   X,
-  Sparkles,
   Navigation,
-  Compass,
   FileCheck,
-  Check,
-  QrCode
+  Check
 } from 'lucide-react';
 
 export default function ContactView({ setView, currentUser, activeRole }) {

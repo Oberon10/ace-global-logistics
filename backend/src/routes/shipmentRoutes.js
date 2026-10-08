@@ -38,8 +38,8 @@ router.post(
     "/",
     // Verify JWT authentication token
     authenticateToken,
-    // Restrict access to Customer, Dispatcher, and Admin roles
-    authorizeRoles("CUSTOMER", "DISPATCHER", "ADMIN"),
+    // Restrict access to Customer, Staff, Dispatcher, and Admin roles
+    authorizeRoles("CUSTOMER", "DISPATCHER", "STAFF", "OPERATOR", "ADMIN", "SUPER_ADMIN"),
     // Controller creating shipment and generating tracking record
     createShipment
 );
@@ -47,7 +47,7 @@ router.post(
 /**
  * @route   PATCH /api/shipments/:id/status
  * @desc    Update current operational status and push new tracking checkpoint log
- * @access  Private (DRIVER, DISPATCHER, or ADMIN)
+ * @access  Private (DRIVER, DISPATCHER, STAFF, or ADMIN)
  */
 router.patch(
     // URL path capture for shipment ID or tracking number
@@ -55,7 +55,7 @@ router.patch(
     // Verify JWT authentication token
     authenticateToken,
     // Restrict access to operational roles responsible for transit updates
-    authorizeRoles("DRIVER", "DISPATCHER", "ADMIN"),
+    authorizeRoles("DRIVER", "DISPATCHER", "STAFF", "OPERATOR", "ADMIN", "SUPER_ADMIN"),
     // Controller updating status and pushing log via MongoDB $push
     updateShipmentStatus
 );

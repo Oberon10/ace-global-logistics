@@ -50,10 +50,10 @@ export const createShipment = async (req, res) => {
             });
         }
 
-        // Determine sender user ID (dispatchers/admins can specify custom sender, otherwise logged-in user)
-        const senderId = (req.user.role === "ADMIN" || req.user.role === "DISPATCHER") && sender
+        // Determine sender user ID (dispatchers/admins/staff can specify custom sender, otherwise logged-in user)
+        const senderId = (req.user?.role === "ADMIN" || req.user?.role === "SUPER_ADMIN" || req.user?.role === "DISPATCHER" || req.user?.role === "STAFF") && sender
             ? sender
-            : req.user.id;
+            : (req.user?.id || sender || null);
 
         // Generate a new unique tracking identifier for this shipment
         const trackingNumber = generateTrackingNumber();
@@ -69,7 +69,7 @@ export const createShipment = async (req, res) => {
             // Checkpoint creation timestamp
             timestamp: new Date(),
             // User reference of whoever initiated the shipment order
-            updatedBy: req.user.id
+            updatedBy: req.user?.id || null
         };
 
         // Persist the new shipment document in MongoDB collection
@@ -163,7 +163,7 @@ export const updateShipmentStatus = async (req, res) => {
             // Timestamp of the status change event
             timestamp: new Date(),
             // Reference to authenticated user who updated the status
-            updatedBy: req.user.id
+            updatedBy: req.user?.id || null
         };
 
         // Determine query filter: support MongoDB _id or trackingNumber
@@ -286,10 +286,10 @@ export const getAllShipments = async (req, res) => {
         let queryFilter = {};
 
         // Restrict customers to only view shipments where they are the sender
-        if (req.user.role === "CUSTOMER") {
+        if (req.user?.role === "CUSTOMER") {
             // Match sender ObjectId to authenticated user id
             queryFilter.sender = req.user.id;
-        } else if (req.user.role === "DRIVER") {
+        } else if (req.user?.role === "DRIVER") {
             // Restrict drivers to shipments assigned to them
             queryFilter.assignedDriver = req.user.id;
         }
