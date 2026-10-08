@@ -13,11 +13,15 @@ import dotenv from "dotenv";
 // Import the database connection utility function
 import connectDB from "./config/database.js";
 
-// Import authentication route endpoints
+// Import authentication route endpoints and database seeder
 import authRoutes from "./routes/authRoutes.js";
+import { seedDatabaseUsers } from "./controllers/authController.js";
 
 // Import shipment route endpoints
 import shipmentRoutes from "./routes/shipmentRoutes.js";
+
+// Import chatbot route endpoints (MongoDB persistence)
+import chatRoutes from "./routes/chatRoutes.js";
 
 // Initialize environment configuration from local .env file
 dotenv.config();
@@ -43,32 +47,28 @@ const allowedOrigins = [
     process.env.CLIENT_URL,
     // Production Vercel deployment URL
     "https://ace-app-dusky.vercel.app",
-    // Local Vite development server
+    // Local Vite development servers
     "http://localhost:5173",
-    // Standard alternative local development server
-    "http://localhost:3000"
+    "http://127.0.0.1:5173",
+    // Standard alternative local development servers
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
 ].filter(Boolean);
 
 // Apply CORS middleware with explicit origin matching, credentials, and allowed HTTP methods
 app.use(
     cors({
-        // Origin validation function checking incoming request Origin header
         origin: (origin, callback) => {
             // Allow server-to-server requests or matching client origin domains
             if (!origin || allowedOrigins.includes(origin)) {
-                // Accept cross-origin request
                 callback(null, true);
             } else {
-                // Accept request for developer convenience
                 callback(null, true);
             }
         },
-        // Allow cookies and authorization credentials in cross-origin requests
         credentials: true,
-        // Supported HTTP methods
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        // Permitted headers in incoming HTTP requests
-        allowedHeaders: ["Content-Type", "Authorization"]
+        allowedHeaders: ["Content-Type", "Authorization", "x-session-id"]
     })
 );
 
@@ -80,26 +80,20 @@ app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 
 // Root health check endpoint for deployment probes and connectivity verification
 app.get("/", (req, res) => {
-    // Return HTTP 200 OK JSON status response confirming API server is running
     res.status(200).json({
-        // Success boolean
         success: true,
-        // Server message
         message: "ACE Logistics Backend API is operational.",
-        // Current server timestamp
+        database: "MongoDB (Mongoose)",
         timestamp: new Date().toISOString()
     });
 });
 
 // Dedicated health endpoint providing system status information
 app.get("/health", (req, res) => {
-    // Return HTTP 200 OK health status
     res.status(200).json({
-        // Status string
         status: "UP",
-        // Service name
         service: "ACE Logistics API",
-        // System uptime in seconds
+        database: "MongoDB (Mongoose)",
         uptime: process.uptime()
     });
 });
@@ -110,29 +104,26 @@ app.use("/api/auth", authRoutes);
 // Mount logistics shipment routes at /api/shipments
 app.use("/api/shipments", shipmentRoutes);
 
+// Mount chatbot routes at /api/chat (MongoDB-backed prompt & response persistence)
+app.use("/api/chat", chatRoutes);
+
 // Catch-all 404 handler for undefined API routes
 app.use((req, res, next) => {
-    // Return HTTP 404 Not Found response
     res.status(404).json({
-        // Boolean failure indicator
         success: false,
-        // Error message indicating requested path does not exist on this server
+        error: `Route '${req.originalUrl}' not found on ACE Logistics API.`,
         message: `Route '${req.originalUrl}' not found on ACE Logistics API.`
     });
 });
 
 // Global central error-handling middleware catching all unhandled application errors
 app.use((err, req, res, next) => {
-    // Log the error details to the server terminal console
     console.error("❌ Unhandled Application Error:", err);
 
-    // Return HTTP 500 or existing error status code with helpful debug payload
     res.status(err.statusCode || 500).json({
-        // Boolean failure indicator
         success: false,
-        // Error message
+        error: err.message || "An unexpected internal server error occurred.",
         message: err.message || "An unexpected internal server error occurred.",
-        // Include stack trace only when running outside production environment
         stack: process.env.NODE_ENV === "production" ? undefined : err.stack
     });
 });
@@ -141,10 +132,6 @@ app.use((err, req, res, next) => {
  * Starts the HTTP server on an available port within the specified range.
  * If the target port is blocked or in use (EADDRINUSE), it automatically cycles
  * to the next port until a free port is found or the range is exhausted.
- *
- * @param {number} currentPort - Starting port to attempt binding to.
- * @param {number} maxPort - Upper limit of the port range to search.
- * @returns {Promise<import("http").Server>}
  */
 const listenWithPortFallback = (currentPort, maxPort) => {
     return new Promise((resolve, reject) => {
@@ -158,10 +145,9 @@ const listenWithPortFallback = (currentPort, maxPort) => {
             app.set("port", activePort);
             process.env.PORT = String(activePort);
 
-            // Log successful server boot confirmation message to console
             console.log(`🚀 ACE Logistics Server running successfully on port ${activePort}`);
-            // Log active API URL for developer convenience
             console.log(`🌐 Base API URL: http://localhost:${activePort}`);
+            console.log(`🍃 Database: Pure MongoDB Mongoose Architecture`);
 
             resolve(server);
         });
@@ -187,19 +173,18 @@ const listenWithPortFallback = (currentPort, maxPort) => {
 };
 
 /**
- * Bootstrap function: Connects to MongoDB database and starts the HTTP server.
+ * Bootstrap function: Connects to MongoDB database, seeds default accounts, and starts the HTTP server.
  */
 const startServer = async () => {
     try {
-        // Connect to MongoDB Atlas cluster using Mongoose with try/catch safety
         await connectDB();
+        // Seed default operational accounts into MongoDB
+        await seedDatabaseUsers();
     } catch (error) {
-        // Log startup failure warning to console without crashing HTTP server
         console.warn("⚠️ Initial database connection warning:", error.message);
     }
 
     try {
-        // Start listening with automatic fallback across the configured port range
         await listenWithPortFallback(DEFAULT_PORT, MAX_PORT);
     } catch (error) {
         console.error("❌ Failed to start server:", error.message);
