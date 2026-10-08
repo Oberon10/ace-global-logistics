@@ -22,7 +22,8 @@ import {
   Ship,
   Check,
   FileCheck,
-  X
+  X,
+  Calendar
 } from 'lucide-react';
 
 export default function CustomerDashboardView({ 
