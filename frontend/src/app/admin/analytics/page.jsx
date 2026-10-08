@@ -2,10 +2,24 @@
 
 import React from 'react';
 import AnalyticsView from '../../../views/AnalyticsView';
+import LoginView from '../../../views/LoginView';
 import { useApp } from '../../../context/AppContext';
 
 export default function AdminAnalyticsPage() {
-  const { navigate, setActiveRole } = useApp();
+  const { navigate, activeRole, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
+
+  if (activeRole !== 'admin') {
+    return (
+      <LoginView 
+        onLoginSuccess={(role, userObj) => handleLoginSuccess(role, userObj, '/admin/analytics')} 
+        setView={navigate}
+        initialPortal="admin"
+        authNotice="Please sign in with Executive Administrator credentials to access Enterprise Analytics."
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
 
   return (
     <AnalyticsView 

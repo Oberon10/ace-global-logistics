@@ -126,7 +126,7 @@ export function AppProvider({ children }) {
   };
 
   // Tracking Search Functionality
-  const handleSearchTracking = (trackingNumber) => {
+  const handleSearchTracking = async (trackingNumber) => {
     const cleanNumber = (trackingNumber || '').trim();
     if (!cleanNumber) {
       setSelectedShipment(null);
@@ -142,12 +142,57 @@ export function AppProvider({ children }) {
     const upperClean = cleanNumber.toUpperCase();
     const stripped = upperClean.replace(/[^A-Z0-9]/g, '');
 
-    const found = shipments.find(s => {
+    let found = shipments.find(s => {
       const sNum = (s.trackingNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       const sId = (s.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       const sSeal = (s.package?.sealNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       return sNum === stripped || sId === stripped || sSeal === stripped;
     });
+
+    if (!found) {
+      try {
+        const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? `http://localhost:5000/api/shipments/track/${encodeURIComponent(cleanNumber)}`
+          : `/api/shipments/track/${encodeURIComponent(cleanNumber)}`;
+        const res = await fetch(backendUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.success && data?.shipment) {
+            const bShipment = data.shipment;
+            found = {
+              id: bShipment._id || bShipment.id || bShipment.trackingNumber,
+              trackingNumber: bShipment.trackingNumber,
+              status: bShipment.currentStatus || 'IN TRANSIT',
+              origin: bShipment.origin?.city || bShipment.origin?.address || 'Origin Terminal',
+              destination: bShipment.destination?.city || bShipment.destination?.address || 'Destination Hub',
+              currentLocation: bShipment.currentLocation || bShipment.origin?.city || 'En Route',
+              estimatedDelivery: bShipment.estimatedDelivery || 'In Progress',
+              method: bShipment.shippingMethod || 'Standard Express Cargo',
+              methodType: bShipment.methodType || 'Air',
+              sender: bShipment.sender || { name: 'Authorized Consignor' },
+              receiver: bShipment.receiver || { name: 'Authorized Consignee' },
+              package: bShipment.packageDetails || { type: 'Commercial Freight', weight: 'Standard' },
+              timeline: (bShipment.trackingHistory && bShipment.trackingHistory.length > 0)
+                ? bShipment.trackingHistory.map((h, i) => ({
+                    id: i + 1,
+                    title: h.status || 'Status Checkpoint',
+                    description: h.description || `Checkpoint logged at ${h.location}`,
+                    location: h.location || 'Transit Hub',
+                    date: h.timestamp ? new Date(h.timestamp).toLocaleDateString() : 'Recorded',
+                    time: h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '',
+                    status: (i === bShipment.trackingHistory.length - 1) ? 'active' : 'completed'
+                  }))
+                : [
+                    { id: 1, title: 'Manifest Created', description: 'Booking confirmed', location: bShipment.origin?.city || 'Origin', date: 'Recorded', status: 'completed' },
+                    { id: 2, title: 'In Transit', description: 'Consignment en route', location: bShipment.currentLocation || 'En Route', date: 'Today', status: 'active' }
+                  ]
+            };
+          }
+        }
+      } catch {
+        // Continue with local result
+      }
+    }
 
     setSelectedShipment(found || null);
     navigate('/tracking');

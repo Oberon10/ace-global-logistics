@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Sidebar from '../../../components/Sidebar';
+import LoginView from '../../../views/LoginView';
 import { useApp } from '../../../context/AppContext';
 import { 
   Settings, 
@@ -18,8 +19,21 @@ import {
 } from 'lucide-react';
 
 export default function AdminSettingsPage() {
-  const { navigate, setActiveRole } = useApp();
+  const { navigate, activeRole, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  if (activeRole !== 'admin') {
+    return (
+      <LoginView 
+        onLoginSuccess={(role, userObj) => handleLoginSuccess(role, userObj, '/admin/settings')} 
+        setView={navigate}
+        initialPortal="admin"
+        authNotice="Please sign in with Executive Administrator credentials to access Platform Settings."
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
 
   // Settings state
   const [apiPort, setApiPort] = useState('5000');

@@ -2,16 +2,34 @@
 
 import React from 'react';
 import AdminDashboardView from '../../../views/AdminDashboardView';
+import LoginView from '../../../views/LoginView';
 import { useApp } from '../../../context/AppContext';
 
 export default function AdminDashboardPage() {
   const { 
+    activeRole,
+    handleLoginSuccess,
     shipments, 
     handleSelectShipment, 
     handleOpenReceipt, 
     navigate, 
-    setActiveRole 
+    setActiveRole,
+    theme,
+    toggleTheme 
   } = useApp();
+
+  if (activeRole !== 'admin') {
+    return (
+      <LoginView 
+        onLoginSuccess={(role, userObj) => handleLoginSuccess(role, userObj, '/admin/dashboard')} 
+        setView={navigate}
+        initialPortal="admin"
+        authNotice="Please sign in with Executive Administrator credentials to access the Admin Console."
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
 
   return (
     <AdminDashboardView 
