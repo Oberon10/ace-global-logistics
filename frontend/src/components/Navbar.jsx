@@ -173,158 +173,13 @@ export default function Navbar({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* If NOT LOGGED IN (Guest): Show Portal Login dropdown with Customer, Staff, and Admin options */}
+            {/* If NOT LOGGED IN (Guest): Operations Support Desk (Portal Login moved to main navbar below) */}
             {activeRole === 'guest' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ color: '#D9E7F0', fontSize: '11.5px', display: 'none' }} className="desktop-nav">
-                  Support: +233 24 555 0192
+                <span style={{ color: '#D9E7F0', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }} className="desktop-nav">
+                  <PhoneCall size={12} color="#7dd3fc" />
+                  <span>24/7 Operations Desk: +233 24 555 0192</span>
                 </span>
-                <div style={{ position: 'relative' }} ref={portalDropdownRef}>
-                  <button
-                    onClick={() => setPortalDropdownOpen(!portalDropdownOpen)}
-                    id="portal-login-nav-btn"
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.12)',
-                      border: '1px solid rgba(255, 255, 255, 0.25)',
-                      color: '#FFFFFF',
-                      padding: '4px 12px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'background 0.15s ease'
-                    }}
-                  >
-                    <UserCheck size={13} color="#7dd3fc" />
-                    <span>Portal Login</span>
-                    <ChevronDown size={12} />
-                  </button>
-
-                  {portalDropdownOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: '100%',
-                      marginTop: '6px',
-                      width: '260px',
-                      maxWidth: 'min(260px, calc(100vw - 24px))',
-                      boxSizing: 'border-box',
-                      backgroundColor: 'var(--color-white)',
-                      borderRadius: '10px',
-                      boxShadow: 'var(--shadow-dropdown)',
-                      border: '1px solid var(--color-border)',
-                      padding: '6px',
-                      zIndex: 110,
-                      color: 'var(--text-primary)'
-                    }}>
-                      <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                        Select Login Portal
-                      </div>
-
-                      {/* Customer Login */}
-                      <button
-                        onClick={() => {
-                          if (setLoginPortal) setLoginPortal('customer');
-                          handleNavClick('login');
-                          setPortalDropdownOpen(false);
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          backgroundColor: 'transparent',
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          transition: 'background 0.15s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-light-blue)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: 'var(--color-light-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-bright-action)' }}>
-                          <User size={15} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '12.5px' }}>Customer Login</div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Bookings, tracking & records</div>
-                        </div>
-                      </button>
-
-                      {/* Staff Login */}
-                      <button
-                        onClick={() => {
-                          if (setLoginPortal) setLoginPortal('staff');
-                          handleNavClick('login');
-                          setPortalDropdownOpen(false);
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          backgroundColor: 'transparent',
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          transition: 'background 0.15s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-light-blue)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#CCFBF1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F766E' }}>
-                          <Truck size={15} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '12.5px' }}>Staff Login</div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Dispatcher & terminal console</div>
-                        </div>
-                      </button>
-
-                      {/* Admin Login */}
-                      <button
-                        onClick={() => {
-                          if (setLoginPortal) setLoginPortal('admin');
-                          handleNavClick('login');
-                          setPortalDropdownOpen(false);
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          backgroundColor: 'transparent',
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          transition: 'background 0.15s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-light-blue)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B45309' }}>
-                          <Shield size={15} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '12.5px' }}>Admin Login</div>
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Full platform & credential oversight</div>
-                        </div>
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             ) : (
               /* If LOGGED IN: Show role badge and accessible workspace switcher based on permissions */
@@ -562,15 +417,196 @@ export default function Navbar({
             />
           </button>
 
-          <Link
-            href="/quote"
-            onClick={() => handleNavClick('quote')}
-            className="ace-btn ace-btn-action"
-            style={{ textDecoration: 'none' }}
-          >
-            <span>Get a Quote</span>
-            <ArrowRight size={15} />
-          </Link>
+          {/* Portal Login Dropdown (replaces "Get a Quote") */}
+          {activeRole === 'guest' ? (
+            <div style={{ position: 'relative' }} ref={portalDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setPortalDropdownOpen(!portalDropdownOpen)}
+                id="portal-login-nav-btn"
+                className="ace-btn ace-btn-action"
+                style={{
+                  height: '42px',
+                  padding: '0 18px',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  borderRadius: '10px',
+                  boxShadow: '0 2px 8px rgba(243, 111, 33, 0.25)',
+                  border: 'none',
+                  color: '#FFFFFF'
+                }}
+              >
+                <UserCheck size={16} color="#FFFFFF" />
+                <span>Portal Login</span>
+                <ChevronDown 
+                  size={14} 
+                  style={{ 
+                    transform: portalDropdownOpen ? 'rotate(180deg)' : 'none', 
+                    transition: 'transform 0.2s ease' 
+                  }} 
+                />
+              </button>
+
+              {portalDropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '100%',
+                  marginTop: '8px',
+                  width: '270px',
+                  maxWidth: 'min(270px, calc(100vw - 24px))',
+                  boxSizing: 'border-box',
+                  backgroundColor: 'var(--color-white)',
+                  borderRadius: '12px',
+                  boxShadow: '0 12px 32px rgba(11, 79, 124, 0.18)',
+                  border: '1px solid var(--color-border)',
+                  padding: '8px',
+                  zIndex: 110,
+                  color: 'var(--text-primary)'
+                }}>
+                  <div style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Select Login Portal
+                  </div>
+
+                  {/* Customer Login */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (setLoginPortal) setLoginPortal('customer');
+                      handleNavClick('login');
+                      setPortalDropdownOpen(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '9px 10px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-light-blue)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: 'var(--color-light-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-bright-action)', flexShrink: 0 }}>
+                      <User size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--color-primary-blue)' }}>Customer Login</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Bookings, tracking & records</div>
+                    </div>
+                  </button>
+
+                  {/* Staff Login */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (setLoginPortal) setLoginPortal('staff');
+                      handleNavClick('login');
+                      setPortalDropdownOpen(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '9px 10px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-light-blue)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: '#CCFBF1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F766E', flexShrink: 0 }}>
+                      <Truck size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--color-primary-blue)' }}>Staff Login</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Dispatcher & terminal console</div>
+                    </div>
+                  </button>
+
+                  {/* Admin Login */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (setLoginPortal) setLoginPortal('admin');
+                      handleNavClick('login');
+                      setPortalDropdownOpen(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '9px 10px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-light-blue)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <div style={{ width: '30px', height: '30px', borderRadius: '8px', backgroundColor: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B45309', flexShrink: 0 }}>
+                      <Shield size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--color-primary-blue)' }}>Admin Login</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Full platform & credential oversight</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleNavClick(
+                activeRole === 'admin' ? 'admin-dashboard' :
+                activeRole === 'staff' ? 'staff-dashboard' :
+                'customer-dashboard'
+              )}
+              className="ace-btn ace-btn-action"
+              style={{
+                height: '42px',
+                padding: '0 18px',
+                fontSize: '14px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                borderRadius: '10px',
+                boxShadow: '0 2px 8px rgba(243, 111, 33, 0.25)',
+                border: 'none',
+                color: '#FFFFFF'
+              }}
+            >
+              <UserCheck size={16} color="#FFFFFF" />
+              <span>
+                {activeRole === 'admin' ? 'Admin Portal' : activeRole === 'staff' ? 'Staff Portal' : 'Customer Portal'}
+              </span>
+              <ArrowRight size={15} />
+            </button>
+          )}
         </div>
 
         {/* Mobile Right Controls: Bulb Switch + Hamburger */}
@@ -665,14 +701,36 @@ export default function Navbar({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button
-              onClick={() => handleNavClick('quote')}
-              className="ace-btn ace-btn-action"
-              style={{ width: '100%', minHeight: '44px', fontSize: '14.5px' }}
-            >
-              <span>Get a Quote</span>
-              <ArrowRight size={16} />
-            </button>
+            {activeRole === 'guest' ? (
+              <button
+                onClick={() => {
+                  if (setLoginPortal) setLoginPortal('customer');
+                  handleNavClick('login');
+                }}
+                className="ace-btn ace-btn-action"
+                style={{ width: '100%', minHeight: '44px', fontSize: '14.5px' }}
+              >
+                <UserCheck size={16} />
+                <span>Portal Login</span>
+                <ArrowRight size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={() => handleNavClick(
+                  activeRole === 'admin' ? 'admin-dashboard' :
+                  activeRole === 'staff' ? 'staff-dashboard' :
+                  'customer-dashboard'
+                )}
+                className="ace-btn ace-btn-action"
+                style={{ width: '100%', minHeight: '44px', fontSize: '14.5px' }}
+              >
+                <UserCheck size={16} />
+                <span>
+                  {activeRole === 'admin' ? 'Admin Portal' : activeRole === 'staff' ? 'Staff Portal' : 'Customer Portal'}
+                </span>
+                <ArrowRight size={16} />
+              </button>
+            )}
             <button
               onClick={() => handleNavClick('track')}
               className="ace-btn ace-btn-secondary"
