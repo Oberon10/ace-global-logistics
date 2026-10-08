@@ -507,6 +507,24 @@ export default function AiAssistant({
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
 
+    // Persist prompt to MongoDB via backend /api/chat endpoint
+    try {
+      const chatApiUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:5000/api/chat'
+        : '/api/chat';
+
+      fetch(chatApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          sessionId: 'client-chat-' + (currentUser?.id || 'guest'),
+          userId: currentUser?.id || null,
+          userEmail: currentUser?.email || null
+        })
+      }).catch(err => console.debug('MongoDB chat persist notice:', err));
+    } catch {}
+
     const lower = text.toLowerCase();
 
     // Check if previous message was awaiting tracking input
