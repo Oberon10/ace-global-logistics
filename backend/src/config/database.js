@@ -8,25 +8,26 @@ export const isDatabaseConnected = () => {
 let connectionPromise = null;
 
 const connectDB = async () => {
-    // Reuse an existing connection.
+    // Reuse an existing database connection.
     if (isDatabaseConnected()) {
         return mongoose.connection;
     }
 
-    // Prevent multiple simultaneous connection attempts.
+    // Prevent simultaneous connection attempts.
     if (connectionPromise) {
         return connectionPromise;
     }
 
     const primaryUri = process.env.MONGODB_URI;
 
+    // Ensure the connection string exists.
     if (!primaryUri) {
         throw new Error(
             "MONGODB_URI is missing from the backend .env file."
         );
     }
 
-    // Ensure this application connects to Atlas.
+    // Ensure this application uses MongoDB Atlas.
     if (!primaryUri.startsWith("mongodb+srv://")) {
         throw new Error(
             "MONGODB_URI must contain your MongoDB Atlas connection string."
@@ -40,13 +41,9 @@ const connectDB = async () => {
                 family: 4
             });
 
-            console.log(
-                "✅ MongoDB Atlas connected successfully!",
-                "Host:",
-                mongoose.connection.host,
-                "Database:",
-                mongoose.connection.name
-            );
+            console.log("✅ MongoDB Atlas connected successfully!");
+            console.log("Host:", mongoose.connection.host);
+            console.log("Database:", mongoose.connection.name);
 
             return mongoose.connection;
         } catch (error) {
