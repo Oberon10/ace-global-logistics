@@ -48,6 +48,29 @@ export const authenticateToken = (req, res, next) => {
 };
 
 /**
+ * Optional Authentication Middleware: If a valid Bearer token is provided,
+ * attaches decoded user to req.user; otherwise leaves req.user = null and continues without error.
+ */
+export const optionalAuthenticateToken = (req, res, next) => {
+    const authHeader = req.headers["authorization"] || req.headers["Authorization"];
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        req.user = null;
+        return next();
+    }
+
+    const token = authHeader.split(" ")[1];
+    jwt.verify(token, process.env.JWT_SECRET, (err, decodedUser) => {
+        if (!err && decodedUser) {
+            req.user = decodedUser;
+        } else {
+            req.user = null;
+        }
+        next();
+    });
+};
+
+
+/**
  * Role-Based Access Control (RBAC) Middleware.
  * Accepts a list of allowed roles (e.g., 'ADMIN', 'DISPATCHER') and ensures the authenticated
  * user's role matches at least one of the permitted roles before granting access.

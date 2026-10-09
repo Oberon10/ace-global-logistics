@@ -610,9 +610,306 @@ export const getProfile = async (req, res) => {
     }
 };
 
+/**
+ * Controller: Register an Operational Staff member in MongoDB (Staff collection).
+ */
+export const createStaff = async (req, res) => {
+    try {
+        const { name, email, password, role, department, station, phone, shift, dutyStatus, accessScope, permissions } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "Staff name, email, and password are required."
+            });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Cross-collection uniqueness validation
+        const [existingAdmin, existingStaff, existingUser] = await Promise.all([
+            Admin.findOne({ email: normalizedEmail }),
+            Staff.findOne({ email: normalizedEmail }),
+            User.findOne({ email: normalizedEmail })
+        ]);
+
+        if (existingAdmin || existingStaff || existingUser) {
+            return res.status(409).json({
+                success: false,
+                message: "An account with this email address already exists."
+            });
+        }
+
+        const newStaff = await Staff.create({
+            name: name.trim(),
+            email: normalizedEmail,
+            password,
+            role: (role || "STAFF").toUpperCase(),
+            employeeId: `ACE-STF-${Math.floor(1000 + Math.random() * 9000)}`,
+            department: department || "Operations Dispatch",
+            station: station || "Terminal Hub",
+            phone: phone || "",
+            shift: (shift && ["MORNING", "AFTERNOON", "NIGHT", "ROTATING", "ON_CALL"].includes(shift.toUpperCase())) ? shift.toUpperCase() : "ROTATING",
+            dutyStatus: (dutyStatus && ["ON_DUTY", "OFF_DUTY", "ON_BREAK", "DISPATCHED", "STANDBY"].includes(dutyStatus.toUpperCase())) ? dutyStatus.toUpperCase() : "ON_DUTY",
+            accessScope: accessScope || "Terminal Dispatcher & Customer Console Only",
+            permissions: permissions || ["DISPATCH_SHIPMENTS", "UPDATE_TRACKING", "VIEW_TERMINAL_CONSIGNMENTS"],
+            status: "ACTIVE"
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Operational Staff account created successfully in MongoDB.",
+            staff: {
+                id: newStaff._id,
+                _id: newStaff._id,
+                name: newStaff.name,
+                email: newStaff.email,
+                role: "Staff",
+                department: newStaff.department,
+                phone: newStaff.phone,
+                status: "Active",
+                accessScope: newStaff.accessScope,
+                createdAt: newStaff.createdAt
+            }
+        });
+    } catch (error) {
+        console.error("❌ Error in createStaff controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to create staff member in database.",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Controller: Register a System Administrator in MongoDB (Admin collection).
+ */
+export const createAdmin = async (req, res) => {
+    try {
+        const { name, email, password, title, clearanceLevel, department, phone, permissions } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "Admin name, email, and password are required."
+            });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Cross-collection uniqueness validation
+        const [existingAdmin, existingStaff, existingUser] = await Promise.all([
+            Admin.findOne({ email: normalizedEmail }),
+            Staff.findOne({ email: normalizedEmail }),
+            User.findOne({ email: normalizedEmail })
+        ]);
+
+        if (existingAdmin || existingStaff || existingUser) {
+            return res.status(409).json({
+                success: false,
+                message: "An account with this email address already exists."
+            });
+        }
+
+        const newAdmin = await Admin.create({
+            name: name.trim(),
+            email: normalizedEmail,
+            password,
+            role: "ADMIN",
+            title: title || "Systems Administrator",
+            clearanceLevel: clearanceLevel || "FULL_AUTHORITY",
+            securityToken: `ACE-SEC-${Math.floor(1000 + Math.random() * 9000)}`,
+            department: department || "Operations Command",
+            phone: phone || "",
+            permissions: permissions || ["ALL_PORTALS", "MANAGE_USERS", "MANAGE_STAFF", "MANAGE_SHIPMENTS", "FULL_AUTHORITY"],
+            status: "ACTIVE"
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Administrator account created successfully in MongoDB.",
+            admin: {
+                id: newAdmin._id,
+                _id: newAdmin._id,
+                name: newAdmin.name,
+                email: newAdmin.email,
+                role: "Admin",
+                department: newAdmin.department,
+                phone: newAdmin.phone,
+                status: "Active",
+                accessScope: "Full All-Portals Executive Authority",
+                createdAt: newAdmin.createdAt
+            }
+        });
+    } catch (error) {
+        console.error("❌ Error in createAdmin controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to create administrator in database.",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Controller: Fetch all users across Admin, Staff, and User collections.
+ */
+export const getAllUsers = async (req, res) => {
+    try {
+        const [admins, staffMembers, customers] = await Promise.all([
+            Admin.find({}).sort({ createdAt: -1 }),
+            Staff.find({}).sort({ createdAt: -1 }),
+            User.find({}).sort({ createdAt: -1 })
+        ]);
+
+        const mappedAdmins = admins.map(a => ({
+            id: String(a._id),
+            _id: a._id,
+            name: a.name,
+            email: a.email,
+            role: "Admin",
+            department: a.department || "Global Operations Command",
+            phone: a.phone || "",
+            status: a.status === "ACTIVE" ? "Active" : "Inactive",
+            accessScope: "Full All-Portals Executive Authority",
+            lastLogin: a.lastLogin ? new Date(a.lastLogin).toLocaleDateString() : "Active",
+            createdAt: a.createdAt
+        }));
+
+        const mappedStaff = staffMembers.map(s => ({
+            id: String(s._id),
+            _id: s._id,
+            name: s.name,
+            email: s.email,
+            role: "Staff",
+            department: s.department || "Operations Dispatch",
+            phone: s.phone || "",
+            status: s.status === "ACTIVE" ? "Active" : "Inactive",
+            accessScope: s.accessScope || "Terminal Dispatcher & Customer Console Only",
+            lastLogin: s.lastLogin ? new Date(s.lastLogin).toLocaleDateString() : "Active",
+            createdAt: s.createdAt
+        }));
+
+        const mappedCustomers = customers.map(c => ({
+            id: String(c._id),
+            _id: c._id,
+            name: c.name,
+            email: c.email,
+            role: "Customer",
+            department: c.company || "Commercial Freight",
+            phone: c.phone || "",
+            status: c.status === "ACTIVE" ? "Active" : "Inactive",
+            accessScope: "Personal Shipments & Telemetry Records Only",
+            lastLogin: c.lastLogin ? new Date(c.lastLogin).toLocaleDateString() : "Active",
+            createdAt: c.createdAt
+        }));
+
+        const combinedUsers = [...mappedAdmins, ...mappedStaff, ...mappedCustomers];
+
+        return res.status(200).json({
+            success: true,
+            count: combinedUsers.length,
+            users: combinedUsers
+        });
+    } catch (error) {
+        console.error("❌ Error in getAllUsers controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to retrieve users from database.",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Controller: Update user/staff/admin status or details.
+ */
+export const updateUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, name, phone, department } = req.body;
+
+        const updatePayload = {};
+        if (status) updatePayload.status = status.toUpperCase();
+        if (name) updatePayload.name = name;
+        if (phone) updatePayload.phone = phone;
+        if (department) updatePayload.department = department;
+
+        let updated = await User.findByIdAndUpdate(id, updatePayload, { new: true });
+        if (!updated) {
+            updated = await Staff.findByIdAndUpdate(id, updatePayload, { new: true });
+        }
+        if (!updated) {
+            updated = await Admin.findByIdAndUpdate(id, updatePayload, { new: true });
+        }
+
+        if (!updated) {
+            return res.status(404).json({
+                success: false,
+                message: "User record not found in database."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "User updated successfully.",
+            user: updated
+        });
+    } catch (error) {
+        console.error("❌ Error in updateUser controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update user in database.",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Controller: Delete user/staff/admin by ID.
+ */
+export const deleteUser = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        let deleted = await User.findByIdAndDelete(id);
+        if (!deleted) {
+            deleted = await Staff.findByIdAndDelete(id);
+        }
+        if (!deleted) {
+            deleted = await Admin.findByIdAndDelete(id);
+        }
+
+        if (!deleted) {
+            return res.status(404).json({
+                success: false,
+                message: "User record not found."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "User deleted successfully from database."
+        });
+    } catch (error) {
+        console.error("❌ Error in deleteUser controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete user.",
+            error: error.message
+        });
+    }
+};
+
 export default {
     register,
     login,
     getProfile,
-    seedDatabaseUsers
+    seedDatabaseUsers,
+    createStaff,
+    createAdmin,
+    getAllUsers,
+    updateUser,
+    deleteUser
 };

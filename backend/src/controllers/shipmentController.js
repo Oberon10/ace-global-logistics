@@ -1,3 +1,6 @@
+// Import Mongoose library
+import mongoose from "mongoose";
+
 // Import the Mongoose Shipment data model
 import Shipment from "../models/Shipment.js";
 
@@ -20,102 +23,157 @@ const generateTrackingNumber = () => {
 
 /**
  * Controller: Create a new logistics shipment.
- * Automatically generates a unique tracking number, populates the sender reference,
- * initializes the currentStatus to 'ORDER_CREATED', and appends the initial tracking history log.
+ * Automatically handles both object and string formats for origin & destination,
+ * validates sender/driver ObjectId references safely, preserves client tracking numbers,
+ * initializes currentStatus to 'ORDER_CREATED' or custom status, and saves to MongoDB.
  */
 export const createShipment = async (req, res) => {
     try {
         // Extract shipment payload fields from incoming HTTP request body
-        const { origin, destination, packageDetails, assignedDriver, sender } = req.body;
+        const { 
+            origin, 
+            destination, 
+            packageDetails, 
+            assignedDriver, 
+            sender,
+            trackingNumber: customTracking,
+            status: customStatus,
+            method,
+            timeline
+        } = req.body;
 
-        // Validate presence of origin information and address string
-        if (!origin || !origin.address) {
-            // Return HTTP 400 Bad Request if origin address is missing
-            return res.status(400).json({
-                // Boolean failure indicator
-                success: false,
-                // Error description
-                message: "Origin address is required."
-            });
+        // Normalize origin: support string ("City, Country") or object
+        let normalizedOrigin = {};
+        if (typeof origin === "string") {
+            const parts = origin.split(",").map(s => s.trim());
+            normalizedOrigin = {
+                address: origin,
+                city: parts[0] || "Origin Hub",
+                state: "",
+                country: parts[1] || "USA",
+                postalCode: ""
+            };
+        } else if (typeof origin === "object" && origin !== null) {
+            normalizedOrigin = {
+                address: origin.address || origin.city || "Origin Facility",
+                city: origin.city || "Origin Facility",
+                state: origin.state || "",
+                country: origin.country || "USA",
+                postalCode: origin.postalCode || ""
+            };
+        } else {
+            normalizedOrigin = {
+                address: "Origin Facility Hub",
+                city: "Origin Hub",
+                state: "",
+                country: "USA",
+                postalCode: ""
+            };
         }
 
-        // Validate presence of destination information and address string
-        if (!destination || !destination.address) {
-            // Return HTTP 400 Bad Request if destination address is missing
-            return res.status(400).json({
-                // Boolean failure indicator
-                success: false,
-                // Error description
-                message: "Destination address is required."
-            });
+        // Normalize destination: support string ("City, Country") or object
+        let normalizedDestination = {};
+        if (typeof destination === "string") {
+            const parts = destination.split(",").map(s => s.trim());
+            normalizedDestination = {
+                address: destination,
+                city: parts[0] || "Destination Hub",
+                state: "",
+                country: parts[1] || "USA",
+                postalCode: ""
+            };
+        } else if (typeof destination === "object" && destination !== null) {
+            normalizedDestination = {
+                address: destination.address || destination.city || "Destination Facility",
+                city: destination.city || "Destination Facility",
+                state: destination.state || "",
+                country: destination.country || "USA",
+                postalCode: destination.postalCode || ""
+            };
+        } else {
+            normalizedDestination = {
+                address: "Destination Facility Hub",
+                city: "Destination Hub",
+                state: "",
+                country: "USA",
+                postalCode: ""
+            };
         }
 
-        // Determine sender user ID (dispatchers/admins/staff can specify custom sender, otherwise logged-in user)
-        const senderId = (req.user?.role === "ADMIN" || req.user?.role === "SUPER_ADMIN" || req.user?.role === "DISPATCHER" || req.user?.role === "STAFF") && sender
-            ? sender
-            : (req.user?.id || sender || null);
+        // Determine sender user ID safely (only set if valid MongoDB ObjectId)
+        let senderId = null;
+        const candidateSender = sender || req.user?.id;
+        if (candidateSender && typeof candidateSender === "string" && mongoose.Types.ObjectId.isValid(candidateSender)) {
+            senderId = candidateSender;
+        }
 
-        // Generate a new unique tracking identifier for this shipment
-        const trackingNumber = generateTrackingNumber();
+        // Validate driver identifier
+        let driverId = null;
+        if (assignedDriver && typeof assignedDriver === "string" && mongoose.Types.ObjectId.isValid(assignedDriver)) {
+            driverId = assignedDriver;
+        }
 
-        // Construct the initial tracking audit trail history entry
+        // Use custom tracking identifier if provided, else generate new
+        const trackingNumber = customTracking 
+            ? String(customTracking).trim().toUpperCase() 
+            : generateTrackingNumber();
+
+        // Normalize initial status to schema enum
+        let initialStatus = "ORDER_CREATED";
+        if (customStatus) {
+            const cleaned = String(customStatus).trim().toUpperCase().replace(/\s+/g, "_");
+            const valid = ["ORDER_CREATED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION", "CANCELLED"];
+            if (valid.includes(cleaned)) {
+                initialStatus = cleaned;
+            } else if (cleaned === "TRANSIT") {
+                initialStatus = "IN_TRANSIT";
+            }
+        }
+
+        // Construct initial tracking audit trail log
         const initialTrackingLog = {
-            // Initial shipment status code
-            status: "ORDER_CREATED",
-            // Location set to origin city or origin address
-            location: origin.city || origin.address || "Origin Hub",
-            // Description of initial event
+            status: initialStatus,
+            location: normalizedOrigin.city || normalizedOrigin.address || "Origin Hub",
             description: "Shipment order created and registered in the ACE logistics system.",
-            // Checkpoint creation timestamp
             timestamp: new Date(),
-            // User reference of whoever initiated the shipment order
-            updatedBy: req.user?.id || null
+            updatedBy: senderId
+        };
+
+        // Normalize package details
+        const normalizedPackage = {
+            weightKg: Number(packageDetails?.weightKg || packageDetails?.weight) || 1.0,
+            category: String(packageDetails?.category || packageDetails?.type || method || "General Freight"),
+            estimatedDelivery: packageDetails?.estimatedDelivery ? new Date(packageDetails.estimatedDelivery) : null
         };
 
         // Persist the new shipment document in MongoDB collection
         const newShipment = await Shipment.create({
-            // Generated unique tracking identifier
             trackingNumber,
-            // User identifier of parcel sender
             sender: senderId,
-            // Assigned driver identifier (null if not yet dispatched)
-            assignedDriver: assignedDriver || null,
-            // Origin details object
-            origin,
-            // Destination details object
-            destination,
-            // Initial operational status
-            currentStatus: "ORDER_CREATED",
-            // Initial array containing the first history log entry
+            assignedDriver: driverId,
+            origin: normalizedOrigin,
+            destination: normalizedDestination,
+            currentStatus: initialStatus,
             trackingHistory: [initialTrackingLog],
-            // Package weight, category, and delivery estimates
-            packageDetails: packageDetails || {}
+            packageDetails: normalizedPackage
         });
 
         // Return HTTP 201 Created status code along with the created shipment
         return res.status(201).json({
-            // Boolean success indicator
             success: true,
-            // Confirmation message
-            message: "Shipment created successfully.",
-            // Created shipment document
+            message: "Shipment created successfully and stored in MongoDB.",
             shipment: newShipment
         });
     } catch (error) {
-        // Output detailed server error to console
         console.error("❌ Error in createShipment controller:", error);
-
-        // Return HTTP 500 Internal Server Error response
         return res.status(500).json({
-            // Boolean failure indicator
             success: false,
-            // Error message
             message: "Failed to create shipment. Please verify shipment data.",
-            // Detailed technical error message
             error: error.message
         });
     }
 };
+
 
 /**
  * Controller: Update the status of an existing shipment.
@@ -130,6 +188,10 @@ export const updateShipmentStatus = async (req, res) => {
         // Extract status update fields from incoming HTTP request body
         const { status, location, description } = req.body;
 
+        // Normalize status to uppercase underscore format
+        let normalizedStatus = String(status || "").trim().toUpperCase().replace(/\s+/g, "_");
+        if (normalizedStatus === "TRANSIT") normalizedStatus = "IN_TRANSIT";
+
         // List of permitted shipment status enum values
         const allowedStatuses = [
             "ORDER_CREATED",
@@ -142,28 +204,25 @@ export const updateShipmentStatus = async (req, res) => {
         ];
 
         // Validate that status parameter is provided and exists in allowedStatuses array
-        if (!status || !allowedStatuses.includes(status)) {
-            // Return HTTP 400 Bad Request for unrecognized status code
+        if (!status || !allowedStatuses.includes(normalizedStatus)) {
             return res.status(400).json({
-                // Boolean failure indicator
                 success: false,
-                // Error message with list of allowed statuses
                 message: `Invalid status. Allowed values: [${allowedStatuses.join(", ")}].`
             });
         }
 
+        let updatedById = null;
+        if (req.user?.id && typeof req.user.id === "string" && mongoose.Types.ObjectId.isValid(req.user.id)) {
+            updatedById = req.user.id;
+        }
+
         // Construct new tracking history audit log object
         const newHistoryLog = {
-            // New operational status
-            status,
-            // Physical location where checkpoint occurred
+            status: normalizedStatus,
             location: location || "Transit Hub",
-            // Explanatory note or automated description
-            description: description || `Shipment status updated to ${status}.`,
-            // Timestamp of the status change event
+            description: description || `Shipment status updated to ${normalizedStatus}.`,
             timestamp: new Date(),
-            // Reference to authenticated user who updated the status
-            updatedBy: req.user?.id || null
+            updatedBy: updatedById
         };
 
         // Determine query filter: support MongoDB _id or trackingNumber
@@ -171,15 +230,12 @@ export const updateShipmentStatus = async (req, res) => {
 
         // Execute atomic update: $set new currentStatus and $push new history entry
         const updatedShipment = await Shipment.findOneAndUpdate(
-            // Query filter identifying the target shipment document
             filter,
-            // MongoDB atomic update operations
             {
-                // Update currentStatus field to the new status
-                $set: { currentStatus: status },
-                // Push the new history log entry into trackingHistory array
+                $set: { currentStatus: normalizedStatus },
                 $push: { trackingHistory: newHistoryLog }
             },
+
             // Options: return updated document and run Mongoose schema validators
             {
                 // Return document after update has been applied

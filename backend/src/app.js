@@ -26,6 +26,14 @@ import chatRoutes from "./routes/chatRoutes.js";
 // Initialize environment configuration from local .env file
 dotenv.config();
 
+// Prevent unexpected process exits on unhandled errors
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("⚠️ Unhandled Promise Rejection:", reason);
+});
+process.on("uncaughtException", (error) => {
+    console.error("⚠️ Uncaught Exception caught safely:", error);
+});
+
 // Create the core Express application instance
 const app = express();
 

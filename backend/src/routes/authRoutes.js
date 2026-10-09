@@ -2,7 +2,16 @@
 import { Router } from "express";
 
 // Import authentication controller handler functions
-import { register, login, getProfile } from "../controllers/authController.js";
+import { 
+    register, 
+    login, 
+    getProfile, 
+    createStaff, 
+    createAdmin, 
+    getAllUsers, 
+    updateUser, 
+    deleteUser 
+} from "../controllers/authController.js";
 
 // Import JWT authentication middleware to protect sensitive profile routes
 import { authenticateToken } from "../middleware/auth.js";
@@ -16,9 +25,7 @@ const router = Router();
  * @access  Public
  */
 router.post(
-    // URL path definition for user registration endpoint
     "/register",
-    // Controller function executing registration logic and issuing JWT
     register
 );
 
@@ -28,9 +35,7 @@ router.post(
  * @access  Public
  */
 router.post(
-    // URL path definition for user login endpoint
     "/login",
-    // Controller function verifying credentials and returning user session token
     login
 );
 
@@ -40,13 +45,61 @@ router.post(
  * @access  Private (Requires valid JWT Bearer token)
  */
 router.get(
-    // URL path definition for current user profile endpoint
     "/me",
-    // Authentication guard middleware validating token header
     authenticateToken,
-    // Controller function returning profile information
     getProfile
+);
+
+/**
+ * @route   POST /api/auth/staff
+ * @desc    Create a new operational staff account in MongoDB (Staff collection)
+ * @access  Public / Admin
+ */
+router.post(
+    "/staff",
+    createStaff
+);
+
+/**
+ * @route   POST /api/auth/admin
+ * @desc    Create a new administrator account in MongoDB (Admin collection)
+ * @access  Public / Admin
+ */
+router.post(
+    "/admin",
+    createAdmin
+);
+
+/**
+ * @route   GET /api/auth/users
+ * @desc    Retrieve all users across Admin, Staff, and User collections
+ * @access  Public / Admin
+ */
+router.get(
+    "/users",
+    getAllUsers
+);
+
+/**
+ * @route   PATCH /api/auth/users/:id
+ * @desc    Update user or staff or admin details/status in MongoDB
+ * @access  Public / Admin
+ */
+router.patch(
+    "/users/:id",
+    updateUser
+);
+
+/**
+ * @route   DELETE /api/auth/users/:id
+ * @desc    Delete user or staff or admin from MongoDB
+ * @access  Public / Admin
+ */
+router.delete(
+    "/users/:id",
+    deleteUser
 );
 
 // Export router instance as the default ES module export
 export default router;
+

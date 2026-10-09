@@ -17,67 +17,74 @@ let retryTimer = null;
  * Uses Mongoose connect method wrapped inside a try/catch block for resilient error handling.
  */
 const connectDB = async () => {
-    try {
-        const mongoUri = process.env.MONGODB_URI;
+    if (mongoose.connection.readyState === 1) {
+        return mongoose.connection;
+    }
 
-        if (!mongoUri) {
-            console.warn("⚠️ MONGODB_URI environment variable is not defined in .env file.");
+    const primaryUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/ace_logistics";
+    const fallbackUri = process.env.MONGODB_ATLAS_URI || "mongodb://127.0.0.1:27017/ace_logistics";
+
+    const attemptConnect = async (uri, label) => {
+        try {
+            await mongoose.connect(uri, {
+                serverSelectionTimeoutMS: 5000,
+                socketTimeoutMS: 10000,
+                family: 4
+            });
+
+            if (mongoose.connection.readyState !== 1) {
+                await new Promise((resolve) => {
+                    if (mongoose.connection.readyState === 1) return resolve();
+                    mongoose.connection.once("connected", resolve);
+                    setTimeout(resolve, 2000);
+                });
+            }
+
+            console.log(`\n✅ MongoDB connected successfully via ${label}! Host: ${mongoose.connection.host}`);
+            return mongoose.connection;
+        } catch (err) {
+            console.warn(`⚠️ Connection attempt failed for ${label}:`, err.message || err);
             return null;
         }
+    };
 
-        if (mongoose.connection.readyState === 1) {
-            return mongoose.connection;
-        }
+    // 1. Attempt primary URI
+    let conn = await attemptConnect(primaryUri, "Primary URI");
 
-        await mongoose.connect(mongoUri, {
-            serverSelectionTimeoutMS: 8000,
-            socketTimeoutMS: 10000,
-            family: 4
-        });
+    // 2. If primary fails and a distinct fallback URI exists, attempt fallback
+    if (!conn && fallbackUri && fallbackUri !== primaryUri) {
+        console.log("🔄 Trying secondary/fallback MongoDB URI...");
+        conn = await attemptConnect(fallbackUri, "Fallback URI");
+    }
 
-        // Ensure connection is fully in readyState 1 (connected)
-        if (mongoose.connection.readyState !== 1) {
-            await new Promise((resolve) => {
-                if (mongoose.connection.readyState === 1) return resolve();
-                mongoose.connection.once("connected", resolve);
-                setTimeout(resolve, 3000);
-            });
-        }
+    // 3. If both failed and primary was not localhost, try local MongoDB
+    if (!conn && !primaryUri.includes("127.0.0.1") && !primaryUri.includes("localhost")) {
+        console.log("🔄 Trying local MongoDB instance (127.0.0.1:27017)...");
+        conn = await attemptConnect("mongodb://127.0.0.1:27017/ace_logistics", "Local MongoDB");
+    }
 
-        console.log(`\n✅ MongoDB connected successfully! Host: ${mongoose.connection.host || "Atlas Cluster"}`);
-
+    if (conn) {
         if (retryTimer) {
             clearInterval(retryTimer);
             retryTimer = null;
         }
-
-        return mongoose.connection;
-    } catch (error) {
-        console.warn("⚠️ MongoDB connection notice:", error.message || error);
-        console.warn("💡 Tip: Ensure your MongoDB Atlas IP access list includes your IP (or 0.0.0.0/0).");
-
-        // Schedule periodic background retry
-        if (!retryTimer) {
-            retryTimer = setInterval(async () => {
-                if (!isDatabaseConnected() && process.env.MONGODB_URI) {
-                    try {
-                        await mongoose.connect(process.env.MONGODB_URI, {
-                            serverSelectionTimeoutMS: 8000,
-                            socketTimeoutMS: 10000,
-                            family: 4
-                        });
-                        console.log("\n✅ Reconnected to MongoDB Atlas in background!");
-                        clearInterval(retryTimer);
-                        retryTimer = null;
-                    } catch {
-                        // Silent retry in background
-                    }
-                }
-            }, 60000);
-        }
-
-        return null;
+        return conn;
     }
+
+    // Schedule periodic background retry if still disconnected
+    if (!retryTimer) {
+        retryTimer = setInterval(async () => {
+            if (!isDatabaseConnected()) {
+                try {
+                    await connectDB();
+                } catch {
+                    // Silent retry
+                }
+            }
+        }, 15000);
+    }
+
+    return null;
 };
 
 // Export the connectDB function as default export

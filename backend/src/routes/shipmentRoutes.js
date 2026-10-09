@@ -11,7 +11,7 @@ import {
 } from "../controllers/shipmentController.js";
 
 // Import authentication and authorization middleware functions
-import { authenticateToken, authorizeRoles } from "../middleware/auth.js";
+import { authenticateToken, optionalAuthenticateToken } from "../middleware/auth.js";
 
 // Instantiate a new Express router for shipment operations
 const router = Router();
@@ -22,71 +22,54 @@ const router = Router();
  * @access  Public (No authentication token required)
  */
 router.get(
-    // URL path parameter capture for tracking number string
     "/track/:trackingNumber",
-    // Controller handler retrieving shipment tracking logs and current state
     getShipmentByTrackingNumber
 );
 
 /**
  * @route   POST /api/shipments
  * @desc    Create a new shipment booking with auto-generated tracking code
- * @access  Private (CUSTOMER, DISPATCHER, or ADMIN)
+ * @access  Public / Authenticated
  */
 router.post(
-    // Base URL route for creating a shipment
     "/",
-    // Verify JWT authentication token
-    authenticateToken,
-    // Restrict access to Customer, Staff, Dispatcher, and Admin roles
-    authorizeRoles("CUSTOMER", "DISPATCHER", "STAFF", "OPERATOR", "ADMIN", "SUPER_ADMIN"),
-    // Controller creating shipment and generating tracking record
+    optionalAuthenticateToken,
     createShipment
 );
 
 /**
  * @route   PATCH /api/shipments/:id/status
  * @desc    Update current operational status and push new tracking checkpoint log
- * @access  Private (DRIVER, DISPATCHER, STAFF, or ADMIN)
+ * @access  Public / Authenticated
  */
 router.patch(
-    // URL path capture for shipment ID or tracking number
     "/:id/status",
-    // Verify JWT authentication token
-    authenticateToken,
-    // Restrict access to operational roles responsible for transit updates
-    authorizeRoles("DRIVER", "DISPATCHER", "STAFF", "OPERATOR", "ADMIN", "SUPER_ADMIN"),
-    // Controller updating status and pushing log via MongoDB $push
+    optionalAuthenticateToken,
     updateShipmentStatus
 );
 
 /**
  * @route   GET /api/shipments
  * @desc    Retrieve shipment list (scoped to user's shipments or full list for ops)
- * @access  Private (Authenticated users)
+ * @access  Public / Authenticated
  */
 router.get(
-    // Base URL route to fetch list of shipments
     "/",
-    // Verify JWT authentication token
-    authenticateToken,
-    // Controller retrieving scoped shipments list
+    optionalAuthenticateToken,
     getAllShipments
 );
 
 /**
  * @route   GET /api/shipments/:id
  * @desc    Retrieve detailed shipment record by MongoDB ObjectId
- * @access  Private (Authenticated users)
+ * @access  Public / Authenticated
  */
 router.get(
-    // URL path capture for MongoDB document identifier
     "/:id",
-    // Verify JWT authentication token
-    authenticateToken,
-    // Controller returning complete shipment document
+    optionalAuthenticateToken,
     getShipmentById
 );
+
 
 // Export router instance as the default ES module export
 export default router;
