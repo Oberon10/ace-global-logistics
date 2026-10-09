@@ -30,15 +30,43 @@ export function AppProvider({ children }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Authentication State
-  const [activeRole, setActiveRole] = useState('guest'); // 'guest' | 'customer' | 'staff' | 'admin'
-  const [currentUser, setCurrentUser] = useState(null);
+  // Hydration state tracking
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Authentication State with client lazy synchronous initialization
+  const [activeRole, setActiveRole] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('ace_auth_role');
+        if (saved) return saved;
+      } catch {}
+    }
+    return 'guest';
+  });
+
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('ace_current_user');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
+
   const [loginPortal, setLoginPortal] = useState('customer');
   const [authNotice, setAuthNotice] = useState('');
   const [postLoginRedirect, setPostLoginRedirect] = useState(null);
 
   // Theme State
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('ace_theme') || 'light';
+      } catch {}
+    }
+    return 'light';
+  });
 
   // Central Reactive Shipments Repository
   const [shipments, setShipments] = useState(INITIAL_SHIPMENTS);
@@ -51,7 +79,7 @@ export function AppProvider({ children }) {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptShipment, setReceiptShipment] = useState(null);
 
-  // Hydrate client state from localStorage on mount
+  // Hydrate client state from localStorage and MongoDB on mount
   useEffect(() => {
     try {
       const savedTheme = localStorage.getItem('ace_theme') || 'light';
@@ -73,6 +101,91 @@ export function AppProvider({ children }) {
         setCurrentUser(JSON.parse(savedUser));
       }
 
+      // Fetch live shipments from MongoDB
+      const fetchLiveShipments = async () => {
+        try {
+          const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:5000/api/shipments'
+            : '/api/shipments';
+          const token = localStorage.getItem('ace_auth_token');
+          const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+          const res = await fetch(backendUrl, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.success && Array.isArray(data.shipments) && data.shipments.length > 0) {
+              const mapped = data.shipments.map(b => ({
+                id: b.trackingNumber || b._id,
+                trackingNumber: b.trackingNumber,
+                status: b.currentStatus === 'IN_TRANSIT' ? 'IN TRANSIT' :
+                        b.currentStatus === 'ORDER_CREATED' ? 'ORDER CREATED' :
+                        b.currentStatus === 'OUT_FOR_DELIVERY' ? 'OUT FOR DELIVERY' :
+                        b.currentStatus || 'IN TRANSIT',
+                statusCode: (b.currentStatus || 'transit').toLowerCase().replace('_', '-'),
+                method: b.packageDetails?.category || 'Air Freight Priority',
+                methodType: 'air',
+                origin: `${b.origin?.city || 'Accra'}, ${b.origin?.country || 'Ghana'}`,
+                destination: `${b.destination?.city || 'London'}, ${b.destination?.country || 'UK'}`,
+                currentLocation: b.origin?.city ? `${b.origin.city} Hub` : 'In Transit',
+                estimatedDelivery: b.packageDetails?.estimatedDelivery ? new Date(b.packageDetails.estimatedDelivery).toLocaleDateString() : 'September 18, 2026',
+                createdDate: b.createdAt ? new Date(b.createdAt).toISOString().split('T')[0] : '2026-09-12',
+                customer: b.sender?.name || 'Commercial Freight Consignor',
+                sender: {
+                  name: b.sender?.name || 'ACE Consignor',
+                  address: b.origin?.address || 'Terminal Hub',
+                  city: b.origin?.city || 'Accra',
+                  country: b.origin?.country || 'Ghana'
+                },
+                receiver: {
+                  name: 'Consignee Partner',
+                  address: b.destination?.address || 'Destination Hub',
+                  city: b.destination?.city || 'London',
+                  country: b.destination?.country || 'UK'
+                },
+                package: {
+                  type: b.packageDetails?.category || 'General Freight',
+                  weightKg: b.packageDetails?.weightKg || 10,
+                  dimensions: '60 × 45 × 40 cm',
+                  pieces: 1,
+                  declaredValue: '$12,450',
+                  sealNumber: `ACE-SL-${b.trackingNumber.slice(-5)}`
+                },
+                charges: {
+                  freight: 360,
+                  fuelSurcharge: 43,
+                  customsHandling: 35,
+                  total: 438
+                },
+                timeline: (b.trackingHistory && b.trackingHistory.length > 0)
+                  ? b.trackingHistory.map((h, i) => ({
+                      id: i + 1,
+                      title: h.status?.replace('_', ' ') || 'Checkpoint',
+                      description: h.description || `Logged at ${h.location}`,
+                      location: h.location || 'Hub',
+                      date: h.timestamp ? new Date(h.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sep 12, 2026',
+                      time: h.timestamp ? new Date(h.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '08:00 AM',
+                      status: i === b.trackingHistory.length - 1 ? 'completed' : 'completed'
+                    }))
+                  : []
+              }));
+
+              setShipments(prev => {
+                const combined = [...mapped, ...prev];
+                const seen = new Set();
+                return combined.filter(s => {
+                  const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
+                  if (!key || seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Live shipments fetch warning:', e);
+        }
+      };
+      fetchLiveShipments();
+
       const storedShipments = localStorage.getItem('ace_registered_consignments');
       if (storedShipments) {
         const parsed = JSON.parse(storedShipments);
@@ -84,13 +197,25 @@ export function AppProvider({ children }) {
             seen.add(key);
             return true;
           });
-          setShipments(deduplicated);
+          setShipments(prev => {
+            const merged = [...prev, ...deduplicated];
+            const dedupSet = new Set();
+            return merged.filter(s => {
+              const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
+              if (!key || dedupSet.has(key)) return false;
+              dedupSet.add(key);
+              return true;
+            });
+          });
         }
       }
     } catch (err) {
       console.warn('LocalStorage hydration error:', err);
+    } finally {
+      setIsHydrated(true);
     }
   }, []);
+
 
   // Theme toggler
   const toggleTheme = () => {
@@ -245,7 +370,7 @@ export function AppProvider({ children }) {
     setReceiptShipment(null);
   };
 
-  // Shipment Creation (Strict Single Instance per Creation)
+  // Shipment Creation (Strict Single Instance per Creation, Persisted to MongoDB)
   const handleShipmentCreated = (newShipment, postAction = null) => {
     if (!newShipment) return;
 
@@ -268,6 +393,38 @@ export function AppProvider({ children }) {
 
     setSelectedShipment(newShipment);
 
+    // Persist directly to MongoDB
+    try {
+      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:5000/api/shipments'
+        : '/api/shipments';
+      
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch(backendUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          trackingNumber: newShipment.trackingNumber || newShipment.id,
+          origin: newShipment.origin,
+          destination: newShipment.destination,
+          status: newShipment.status || 'IN_TRANSIT',
+          method: newShipment.method,
+          packageDetails: {
+            weightKg: newShipment.package?.weightKg || 10,
+            category: newShipment.package?.type || 'General Freight',
+            estimatedDelivery: newShipment.estimatedDelivery
+          }
+        })
+      }).catch(err => {
+        console.warn('Backend MongoDB shipment registration notice:', err);
+      });
+    } catch (err) {
+      console.warn('Shipment persist warning:', err);
+    }
+
     if (postAction === 'view-details') {
       navigate('/tracking');
     } else if (postAction === 'view-receipt') {
@@ -275,7 +432,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  // Shipment Status Update (Staff & Admin)
+  // Shipment Status Update (Staff & Admin, Persisted to MongoDB)
   const handleUpdateShipmentStatus = (shipmentId, updates) => {
     setShipments(prev => {
       const updatedList = prev.map(s => {
@@ -304,7 +461,7 @@ export function AppProvider({ children }) {
             timeline: updatedTimeline
           };
 
-          if (selectedShipment?.id === s.id) {
+          if (selectedShipment?.id === s.id || selectedShipment?.trackingNumber === s.trackingNumber) {
             setSelectedShipment(updated);
           }
           return updated;
@@ -319,6 +476,31 @@ export function AppProvider({ children }) {
       }
       return updatedList;
     });
+
+    // Persist update to MongoDB
+    try {
+      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? `http://localhost:5000/api/shipments/${encodeURIComponent(shipmentId)}/status`
+        : `/api/shipments/${encodeURIComponent(shipmentId)}/status`;
+      
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch(backendUrl, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          status: updates.status,
+          location: updates.currentLocation,
+          description: updates.note
+        })
+      }).catch(err => {
+        console.warn('Backend MongoDB status update notice:', err);
+      });
+    } catch (err) {
+      console.warn('Status update persist warning:', err);
+    }
   };
 
   // Quote -> Shipment Booking Transition
@@ -419,6 +601,7 @@ export function AppProvider({ children }) {
     setActiveRole,
     currentUser,
     setCurrentUser,
+    isHydrated,
     loginPortal,
     setLoginPortal,
     authNotice,
@@ -427,6 +610,7 @@ export function AppProvider({ children }) {
     handleLogout,
     quickAuthorizeAdmin,
     handleSendPackageClick,
+
 
     // Theme
     theme,

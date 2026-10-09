@@ -9,6 +9,7 @@ export default function CustomerDashboardPage() {
   const { 
     activeRole, 
     currentUser, 
+    isHydrated,
     handleLoginSuccess, 
     navigate, 
     shipments, 
@@ -19,7 +20,16 @@ export default function CustomerDashboardPage() {
     toggleTheme 
   } = useApp();
 
+  if (!isHydrated) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Loading Customer Portal...</p>
+      </div>
+    );
+  }
+
   if (activeRole === 'guest') {
+
     return (
       <LoginView 
         onLoginSuccess={(role, userObj) => handleLoginSuccess(role, userObj, '/customer/dashboard')} 

@@ -19,8 +19,12 @@ import {
 } from 'lucide-react';
 
 export default function AdminSettingsPage() {
-  const { navigate, activeRole, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
+  const { navigate, activeRole, isHydrated, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  if (!isHydrated) {
+    return null;
+  }
 
   if (activeRole !== 'admin') {
     return (

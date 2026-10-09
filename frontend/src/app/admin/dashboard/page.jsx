@@ -8,6 +8,7 @@ import { useApp } from '../../../context/AppContext';
 export default function AdminDashboardPage() {
   const { 
     activeRole,
+    isHydrated,
     handleLoginSuccess,
     shipments, 
     handleSelectShipment, 
@@ -18,7 +19,12 @@ export default function AdminDashboardPage() {
     toggleTheme 
   } = useApp();
 
+  if (!isHydrated) {
+    return null;
+  }
+
   if (activeRole !== 'admin') {
+
     return (
       <LoginView 
         onLoginSuccess={(role, userObj) => handleLoginSuccess(role, userObj, '/admin/dashboard')} 

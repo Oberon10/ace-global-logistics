@@ -6,7 +6,11 @@ import LoginView from '../../../views/LoginView';
 import { useApp } from '../../../context/AppContext';
 
 export default function AdminCustomersPage() {
-  const { navigate, activeRole, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
+  const { navigate, activeRole, isHydrated, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
+
+  if (!isHydrated) {
+    return null;
+  }
 
   if (activeRole !== 'admin') {
     return (

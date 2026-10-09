@@ -20,6 +20,7 @@ export default function AdminLayout({ children }) {
   const pathname = usePathname();
   const { 
     activeRole, 
+    isHydrated,
     setActiveRole, 
     currentUser, 
     handleLogout, 
@@ -27,8 +28,36 @@ export default function AdminLayout({ children }) {
     quickAuthorizeAdmin 
   } = useApp();
 
+  // If client hydration has not yet finished, render loading placeholder
+  if (!isHydrated) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#071524',
+        color: '#FFFFFF'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            border: '3px solid rgba(245, 158, 11, 0.2)',
+            borderTopColor: '#F59E0B',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 14px'
+          }} />
+          <p style={{ fontSize: '13px', color: '#94A3B8', fontWeight: 600 }}>Verifying Executive Admin Session...</p>
+        </div>
+      </div>
+    );
+  }
+
   // If NOT authorized as admin, display the Protected Clearance Gate
   if (activeRole !== 'admin') {
+
     return (
       <div className="admin-gate-overlay" style={{
         minHeight: '100vh',

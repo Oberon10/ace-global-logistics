@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { USERS_LIST } from '../data/shipments';
 import { 
@@ -36,6 +36,56 @@ export default function UserManagementView({
   const [users, setUsers] = useState(USERS_LIST);
   const [activeFilter, setActiveFilter] = useState(initialFilter); // 'ALL', 'Staff', 'Customer', 'Admin'
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  
+  // Fetch live users directly from MongoDB
+  const fetchMongoUsers = async () => {
+    try {
+      setIsLoadingUsers(true);
+      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:5000/api/auth/users'
+        : '/api/auth/users';
+      const res = await fetch(backendUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.users) && data.users.length > 0) {
+          const mapped = data.users.map(u => ({
+            id: u._id || u.id,
+            _id: u._id || u.id,
+            name: u.name,
+            email: u.email,
+            loginPassword: u.role === 'Admin' ? 'AdminSecurePass#2026' : u.role === 'Staff' ? 'StaffDispatchKey@99' : 'ClientSecure#2026',
+            role: u.role,
+            department: u.department || 'Operations',
+            phone: u.phone || '+44 20 7946 0000',
+            status: u.status || 'Active',
+            lastLogin: u.lastLogin || 'Active',
+            accessScope: u.accessScope || (u.role === 'Admin' ? 'Full All-Portals Executive Authority' : u.role === 'Staff' ? 'Terminal Dispatcher & Customer Console Only' : 'Personal Shipments & Telemetry Records Only')
+          }));
+
+          setUsers(prev => {
+            const seen = new Set();
+            const combined = [...mapped, ...prev];
+            return combined.filter(user => {
+              const email = (user.email || '').toLowerCase().trim();
+              if (!email || seen.has(email)) return false;
+              seen.add(email);
+              return true;
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch MongoDB users:', err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMongoUsers();
+  }, []);
+
   
   // Password visibility state: set of user ids currently revealed
   const [revealedPasswords, setRevealedPasswords] = useState(new Set());
@@ -87,16 +137,32 @@ export default function UserManagementView({
 
   // Toggle active / inactive status
   const toggleStatus = (id) => {
+    let nextStatus = 'Active';
     const updatedUsers = users.map(u => {
-      if (u.id === id) {
-        return { ...u, status: u.status === 'Active' ? 'Inactive' : 'Active' };
+      if (u.id === id || u._id === id) {
+        nextStatus = u.status === 'Active' ? 'Inactive' : 'Active';
+        return { ...u, status: nextStatus };
       }
       return u;
     });
     setUsers(updatedUsers);
+
+    // Sync status change to backend MongoDB
+    try {
+      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? `http://localhost:5000/api/auth/users/${id}`
+        : `/api/auth/users/${id}`;
+      fetch(backendUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      }).catch(err => console.warn('User status sync warning:', err));
+    } catch {
+      // ignore
+    }
     
     // Sync status change to localStorage for staff
-    const targetUser = updatedUsers.find(u => u.id === id);
+    const targetUser = updatedUsers.find(u => u.id === id || u._id === id);
     if (targetUser && targetUser.role?.toLowerCase() === 'staff') {
       try {
         const raw = localStorage.getItem('ace_registered_staff');
@@ -109,8 +175,8 @@ export default function UserManagementView({
       }
     }
 
-    if (inspectUser && inspectUser.id === id) {
-      setInspectUser(prev => ({ ...prev, status: prev.status === 'Active' ? 'Inactive' : 'Active' }));
+    if (inspectUser && (inspectUser.id === id || inspectUser._id === id)) {
+      setInspectUser(prev => ({ ...prev, status: nextStatus }));
     }
   };
 
@@ -125,11 +191,13 @@ export default function UserManagementView({
       ? 'Terminal Dispatcher & Customer Console Only'
       : 'Personal Shipments & Telemetry Records Only';
 
+    const tempPassword = newUserPassword || (newUserRole === 'Admin' ? 'AdminSecurePass#2026' : newUserRole === 'Staff' ? 'StaffDispatchKey@99' : 'ClientSecure#2026');
+
     const created = {
-      id: `usr-${users.length + 1}`,
+      id: `usr-${Date.now()}`,
       name: newUserName,
       email: newUserEmail,
-      loginPassword: newUserPassword || 'TempPass#' + Math.floor(1000 + Math.random() * 9000),
+      loginPassword: tempPassword,
       role: newUserRole,
       department: newUserDept,
       phone: newUserPhone,
@@ -140,7 +208,11 @@ export default function UserManagementView({
 
     setUsers([created, ...users]);
 
-    // Persist to localStorage so the new user can log in immediately
+    const backendBase = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:5000'
+      : '';
+
+    // Persist to MongoDB based on role
     if (newUserRole === 'Staff') {
       try {
         const raw = localStorage.getItem('ace_registered_staff');
@@ -148,8 +220,45 @@ export default function UserManagementView({
         const filtered = list.filter(s => s.email?.trim().toLowerCase() !== newUserEmail.trim().toLowerCase());
         filtered.push(created);
         localStorage.setItem('ace_registered_staff', JSON.stringify(filtered));
+
+        // Persist to MongoDB Staff collection
+        fetch(`${backendBase}/api/auth/staff`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newUserName,
+            email: newUserEmail,
+            password: tempPassword,
+            role: 'STAFF',
+            department: newUserDept,
+            phone: newUserPhone
+          })
+        }).then(() => fetchMongoUsers()).catch(err => {
+          console.warn('Backend MongoDB staff registration notice:', err);
+        });
       } catch (err) {
         console.error('Failed to sync staff to localStorage', err);
+      }
+    } else if (newUserRole === 'Admin') {
+      // Persist to MongoDB Admin collection
+      try {
+        fetch(`${backendBase}/api/auth/admin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newUserName,
+            email: newUserEmail,
+            password: tempPassword,
+            role: 'ADMIN',
+            title: 'Systems Administrator',
+            department: newUserDept,
+            phone: newUserPhone
+          })
+        }).then(() => fetchMongoUsers()).catch(err => {
+          console.warn('Backend MongoDB admin registration notice:', err);
+        });
+      } catch (err) {
+        console.error('Failed to sync admin to backend', err);
       }
     } else if (newUserRole === 'Customer') {
       try {
@@ -160,23 +269,18 @@ export default function UserManagementView({
         localStorage.setItem('ace_registered_customers', JSON.stringify(filtered));
 
         // Sync new customer directly to MongoDB via backend REST API
-        const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? 'http://localhost:5000/api/auth/register'
-          : '/api/auth/register';
-
-        fetch(backendUrl, {
+        fetch(`${backendBase}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: newUserName,
             email: newUserEmail,
-            password: newUserPassword || 'CustomerPass#2026',
+            password: tempPassword,
             role: 'CUSTOMER',
             phone: newUserPhone,
-            country: newUserLocation || 'Ghana',
-            items: 'General Commercial Cargo & Freight'
+            company: newUserDept
           })
-        }).catch(err => {
+        }).then(() => fetchMongoUsers()).catch(err => {
           console.warn('Backend MongoDB customer registration notice:', err);
         });
       } catch (err) {
