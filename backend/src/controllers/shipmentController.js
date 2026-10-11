@@ -39,6 +39,20 @@ export const generateTrackingNumber = () => {
 };
 
 /**
+ * Helper utility to safely parse dates without throwing Mongoose CastError on invalid strings (e.g. "Today").
+ */
+const parseSafeDate = (value, defaultVal = null) => {
+    if (!value) return defaultVal;
+    const d = new Date(value);
+    return (d instanceof Date && !isNaN(d.getTime())) ? d : defaultVal;
+};
+
+/**
+ * Helper utility to safely validate and return MongoDB ObjectIds.
+ */
+const safeObjectId = (id) => (id && mongoose.Types.ObjectId.isValid(id)) ? id : null;
+
+/**
  * Controller: Create a new shipment booking.
  * 
  * CORE REQUIREMENT:
@@ -67,18 +81,19 @@ export const createShipment = async (req, res) => {
 
         // 1. Normalize origin: support string ("City, Country") or object
         let normalizedOrigin = {};
-        if (typeof origin === "string") {
+        if (typeof origin === "string" && origin.trim()) {
             const parts = origin.split(",").map(s => s.trim());
             normalizedOrigin = {
-                address: origin,
+                address: origin.trim(),
                 city: parts[0] || "Origin Hub",
                 state: "",
                 country: parts[1] || "Ghana",
                 postalCode: ""
             };
         } else if (typeof origin === "object" && origin !== null) {
+            const addr = origin.address || origin.city || origin.name || "Origin Facility Hub";
             normalizedOrigin = {
-                address: origin.address || origin.city || "Origin Facility",
+                address: String(addr).trim() || "Origin Facility Hub",
                 city: origin.city || "Origin Hub",
                 state: origin.state || "",
                 country: origin.country || "Ghana",
@@ -96,18 +111,19 @@ export const createShipment = async (req, res) => {
 
         // 2. Normalize destination: support string ("City, Country") or object
         let normalizedDestination = {};
-        if (typeof destination === "string") {
+        if (typeof destination === "string" && destination.trim()) {
             const parts = destination.split(",").map(s => s.trim());
             normalizedDestination = {
-                address: destination,
+                address: destination.trim(),
                 city: parts[0] || "Destination Hub",
                 state: "",
                 country: parts[1] || "United Kingdom",
                 postalCode: ""
             };
         } else if (typeof destination === "object" && destination !== null) {
+            const addr = destination.address || destination.city || destination.name || "Destination Facility Hub";
             normalizedDestination = {
-                address: destination.address || destination.city || "Destination Facility",
+                address: String(addr).trim() || "Destination Facility Hub",
                 city: destination.city || "Destination Hub",
                 state: destination.state || "",
                 country: destination.country || "United Kingdom",
@@ -128,7 +144,7 @@ export const createShipment = async (req, res) => {
         let candidateSender = sender || req.user?.id;
         if (candidateSender && typeof candidateSender === "string" && mongoose.Types.ObjectId.isValid(candidateSender)) {
             senderId = candidateSender;
-        } else if (candidateSender && typeof candidateSender === "object" && candidateSender._id) {
+        } else if (candidateSender && typeof candidateSender === "object" && candidateSender._id && mongoose.Types.ObjectId.isValid(candidateSender._id)) {
             senderId = candidateSender._id;
         }
 
@@ -140,10 +156,7 @@ export const createShipment = async (req, res) => {
         }
 
         // Driver identifier
-        let driverId = null;
-        if (assignedDriver && typeof assignedDriver === "string" && mongoose.Types.ObjectId.isValid(assignedDriver)) {
-            driverId = assignedDriver;
-        }
+        let driverId = safeObjectId(assignedDriver);
 
         // 4. Stable unique tracking number generation
         let trackingNumber = customTracking 
@@ -239,7 +252,7 @@ export const createShipment = async (req, res) => {
             declaredValue: String(pkg.declaredValue || ""),
             insurance: String(pkg.insurance || "Standard Commercial Liability"),
             sealNumber: String(pkg.sealNumber || `ACE-SL-${trackingNumber.slice(-5)}`),
-            estimatedDelivery: pkg.estimatedDelivery ? new Date(pkg.estimatedDelivery) : null
+            estimatedDelivery: parseSafeDate(pkg.estimatedDelivery, null)
         };
 
         const shippingMethodName = String(method || req.body.shippingMethod || "Air Freight Priority");
@@ -253,14 +266,16 @@ export const createShipment = async (req, res) => {
 
         // 7. Initial status history audit trail
         let initialHistory = [];
+        const fallbackUserId = safeObjectId(req.user?.id) || safeObjectId(senderId);
+
         if (Array.isArray(timeline) && timeline.length > 0) {
             initialHistory = timeline.map(t => ({
                 status: initialStatus,
                 location: t.location || normalizedOrigin.city || "Intake Terminal",
                 description: t.description || t.title || "Shipment request registered in ACE Logistics network.",
                 note: t.note || "Initial electronic manifest creation.",
-                timestamp: t.date ? new Date(t.date) : new Date(),
-                updatedBy: req.user?.id || senderId,
+                timestamp: parseSafeDate(t.timestamp || t.date, new Date()),
+                updatedBy: fallbackUserId,
                 changedByRole: callerRole
             }));
         } else {
@@ -272,20 +287,21 @@ export const createShipment = async (req, res) => {
                     : `Shipment order created with status ${initialStatus}.`,
                 note: "Consignment created online / intake desk.",
                 timestamp: new Date(),
-                updatedBy: req.user?.id || senderId,
+                updatedBy: fallbackUserId,
                 changedByRole: callerRole
             }];
         }
 
         // Creator identification
-        const createdById = req.user?.id || senderId || null;
+        const createdById = fallbackUserId;
         const createdByRole = callerRole;
 
         // 8. Persist new shipment in MongoDB
         const newShipment = await Shipment.create({
             trackingNumber,
-            sender: senderId,
+            sender: safeObjectId(senderId),
             assignedDriver: driverId,
+            assignedStaff: safeObjectId(req.body.assignedStaff),
             origin: normalizedOrigin,
             destination: normalizedDestination,
             currentStatus: initialStatus,
@@ -302,31 +318,33 @@ export const createShipment = async (req, res) => {
             charges: normalizedCharges
         });
 
-        // 9. Dispatch in-app notifications
-        // A. Notification to customer
-        if (senderDetailsObj.email || senderId) {
+        // 9. Dispatch in-app notifications safely without blocking response
+        try {
+            if (senderDetailsObj.email || safeObjectId(senderId)) {
+                await createNotification({
+                    recipient: safeObjectId(senderId),
+                    recipientEmail: senderDetailsObj.email,
+                    recipientRole: "CUSTOMER",
+                    shipment: newShipment._id,
+                    trackingNumber,
+                    title: "Shipment Request Received",
+                    message: `Your shipment request ${trackingNumber} has been received. Consignment is pending physical verification by ACE Logistics staff.`,
+                    type: "REQUEST_CREATED"
+                });
+            }
+
             await createNotification({
-                recipient: senderId,
-                recipientEmail: senderDetailsObj.email,
-                recipientRole: "CUSTOMER",
+                recipient: null,
+                recipientRole: "STAFF",
                 shipment: newShipment._id,
                 trackingNumber,
-                title: "Shipment Request Received",
-                message: `Your shipment request ${trackingNumber} has been received. Consignment is pending physical verification by ACE Logistics staff.`,
+                title: "New Consignment Pending Verification",
+                message: `Consignment ${trackingNumber} from ${customerDisplayName} (${normalizedOrigin.city} → ${normalizedDestination.city}) awaits package inspection.`,
                 type: "REQUEST_CREATED"
             });
+        } catch (notifErr) {
+            console.warn("⚠️ Non-fatal notification error during shipment creation:", notifErr.message);
         }
-
-        // B. Notification to operational staff
-        await createNotification({
-            recipient: null,
-            recipientRole: "STAFF",
-            shipment: newShipment._id,
-            trackingNumber,
-            title: "New Consignment Pending Verification",
-            message: `Consignment ${trackingNumber} from ${customerDisplayName} (${normalizedOrigin.city} → ${normalizedDestination.city}) awaits package inspection.`,
-            type: "REQUEST_CREATED"
-        });
 
         return res.status(201).json({
             success: true,

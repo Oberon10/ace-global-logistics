@@ -506,8 +506,9 @@ export function AppProvider({ children }) {
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {
-        alert(data?.message || 'Database error: Failed to save shipment to MongoDB Atlas.');
-        throw new Error(data?.message || 'Failed to save shipment to MongoDB Atlas');
+        const detail = data?.error ? ` (${data.error})` : '';
+        const msg = (data?.message || 'Failed to save shipment to MongoDB Atlas') + detail;
+        throw new Error(msg);
       }
 
       if (data?.shipment) {

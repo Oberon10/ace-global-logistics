@@ -244,6 +244,7 @@ export default function ShipmentCreationView({
           description: 'Electronic shipping order registered with ACE Logistics. Pending physical intake.',
           location: `${formData.senderCity}, ${formData.senderCountry}`,
           date: 'Today',
+          timestamp: new Date().toISOString(),
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           status: 'completed'
         },
