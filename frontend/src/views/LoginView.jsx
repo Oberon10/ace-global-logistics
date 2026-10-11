@@ -302,7 +302,7 @@ export default function LoginView({
       const res = await fetch(backendUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, password: cleanPassword })
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword, portal: selectedPortal })
       });
 
       const data = await res.json().catch(() => null);

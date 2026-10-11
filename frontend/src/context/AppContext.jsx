@@ -31,10 +31,11 @@ export const ROUTE_MAP = {
  */
 export const mapShipmentDoc = (b) => {
   if (!b) return null;
-  const rawStatus = b.currentStatus || b.status || 'PENDING_VERIFICATION';
+  const rawStatus = b.currentStatus || b.status || 'PENDING';
   const cleanStatus = String(rawStatus).toUpperCase().trim().replace(/\s+/g, '_');
-  const displayStatus = cleanStatus === 'IN_TRANSIT' ? 'IN TRANSIT' :
-                        cleanStatus === 'PENDING_VERIFICATION' ? 'PENDING VERIFICATION' :
+  const displayStatus = cleanStatus === 'PENDING' ? 'PENDING' :
+                        cleanStatus === 'PENDING_VERIFICATION' ? 'PENDING' :
+                        cleanStatus === 'IN_TRANSIT' ? 'IN TRANSIT' :
                         cleanStatus === 'READY_FOR_DISPATCH' ? 'READY FOR DISPATCH' :
                         cleanStatus === 'OUT_FOR_DELIVERY' ? 'OUT FOR DELIVERY' :
                         cleanStatus === 'DELIVERY_FAILED' ? 'DELIVERY FAILED' :
@@ -481,8 +482,8 @@ export function AppProvider({ children }) {
           trackingNumber: newShipment.trackingNumber || newShipment.id,
           origin: newShipment.origin,
           destination: newShipment.destination,
-          // Initial status is PENDING_VERIFICATION for customer bookings
-          status: newShipment.status || 'PENDING_VERIFICATION',
+          // Initial status is PENDING for customer bookings
+          status: newShipment.status || 'PENDING',
           method: newShipment.method,
           customer: newShipment.customer || newShipment.sender?.company || newShipment.sender?.name,
           sender: newShipment.sender,
