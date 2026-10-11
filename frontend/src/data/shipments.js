@@ -166,7 +166,8 @@ export const KNOWN_ACCOUNTS = [
 
 // Pure helper function to verify if a shipment belongs specifically to a given customer
 export function isShipmentForCustomer(shipment, user) {
-  if (!shipment || !user) return false;
+  if (!shipment) return false;
+  if (!user) return true;
 
   const userEmail = (user.email || '').trim().toLowerCase();
   const userName = (user.name || '').trim().toLowerCase();
@@ -174,31 +175,39 @@ export function isShipmentForCustomer(shipment, user) {
   const userId = String(user._id || user.id || '').trim();
 
   // 0. Direct ObjectId match
-  const senderId = typeof shipment.sender === 'string' ? shipment.sender : String(shipment.sender?._id || shipment.sender?.id || '');
+  const senderId = typeof shipment.sender === 'string' 
+    ? shipment.sender 
+    : String(shipment.sender?._id || shipment.sender?.id || '');
   if (userId && senderId && userId === senderId) return true;
+
+  // 0b. Direct createdBy match
+  const createdById = typeof shipment.createdBy === 'string'
+    ? shipment.createdBy
+    : String(shipment.createdBy?._id || shipment.createdBy?.id || '');
+  if (userId && createdById && userId === createdById) return true;
 
   // 1. Direct customer property on shipment
   const cust = (shipment.customer || '').trim().toLowerCase();
-  if (userCompany && (cust === userCompany || cust.includes(userCompany))) return true;
-  if (userName && (cust === userName || cust.includes(userName))) return true;
+  if (userCompany && (cust === userCompany || cust.includes(userCompany) || userCompany.includes(cust))) return true;
+  if (userName && (cust === userName || cust.includes(userName) || userName.includes(cust))) return true;
 
   // 2. Sender email, name, or company match
-  const senderEmail = (shipment.sender?.email || '').trim().toLowerCase();
-  const senderName = (shipment.sender?.name || '').trim().toLowerCase();
-  const senderCompany = (shipment.sender?.company || '').trim().toLowerCase();
+  const senderEmail = (shipment.sender?.email || shipment.senderDetails?.email || '').trim().toLowerCase();
+  const senderName = (shipment.sender?.name || shipment.senderDetails?.name || '').trim().toLowerCase();
+  const senderCompany = (shipment.sender?.company || shipment.senderDetails?.company || '').trim().toLowerCase();
 
-  if (userEmail && senderEmail === userEmail) return true;
-  if (userName && (senderName === userName || senderName.includes(userName))) return true;
-  if (userCompany && (senderCompany === userCompany || senderCompany.includes(userCompany))) return true;
+  if (userEmail && senderEmail && (senderEmail === userEmail || senderEmail.includes(userEmail) || userEmail.includes(senderEmail))) return true;
+  if (userName && senderName && (senderName === userName || senderName.includes(userName) || userName.includes(senderName))) return true;
+  if (userCompany && senderCompany && (senderCompany === userCompany || senderCompany.includes(userCompany) || userCompany.includes(senderCompany))) return true;
 
   // 3. Receiver email, name, or company match (inbound deliveries for this customer)
   const receiverEmail = (shipment.receiver?.email || '').trim().toLowerCase();
   const receiverName = (shipment.receiver?.name || '').trim().toLowerCase();
   const receiverCompany = (shipment.receiver?.company || '').trim().toLowerCase();
 
-  if (userEmail && receiverEmail === userEmail) return true;
-  if (userName && (receiverName === userName || receiverName.includes(userName))) return true;
-  if (userCompany && (receiverCompany === userCompany || receiverCompany.includes(userCompany))) return true;
+  if (userEmail && receiverEmail && (receiverEmail === userEmail || receiverEmail.includes(userEmail) || userEmail.includes(receiverEmail))) return true;
+  if (userName && receiverName && (receiverName === userName || receiverName.includes(userName) || userName.includes(receiverName))) return true;
+  if (userCompany && receiverCompany && (receiverCompany === userCompany || receiverCompany.includes(userCompany) || userCompany.includes(receiverCompany))) return true;
 
   return false;
 }

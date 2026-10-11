@@ -55,8 +55,9 @@ export const mapShipmentDoc = (b) => {
     _id: b._id,
     id: b.trackingNumber || b._id,
     trackingNumber: b.trackingNumber,
-    status: displayStatus,
+    status: cleanStatus,
     statusRaw: cleanStatus,
+    statusDisplay: displayStatus,
     statusCode: cleanStatus.toLowerCase().replace(/_/g, '-'),
     paymentStatus: b.paymentStatus || 'PENDING',
     assignedStaff: b.assignedStaff,
@@ -528,9 +529,10 @@ export function AppProvider({ children }) {
 
     setSelectedShipment(savedShipment);
 
-    // Refresh notifications and admin stats
+    // Refresh notifications, admin stats, and live shipments
     fetchNotifications();
     fetchAdminStats();
+    fetchLiveShipments();
 
     if (postAction === 'view-details') {
       navigate('/tracking');

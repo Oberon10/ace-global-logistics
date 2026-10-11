@@ -201,7 +201,9 @@ export default function ShipmentCreationView({
       estimatedDelivery: 'September 18, 2026',
       createdDate: new Date().toISOString().split('T')[0],
       customer: formData.senderCompany || formData.senderName,
+      createdBy: currentUser?.id || currentUser?._id,
       sender: {
+        _id: currentUser?.id || currentUser?._id,
         name: formData.senderName,
         company: formData.senderCompany,
         phone: formData.senderPhone,

@@ -64,15 +64,20 @@ export default function AdminDashboardView({
   const yesterdayShipmentsCount = adminStats?.shipments?.yesterday ?? 0;
   const monthlyShipmentsCount = adminStats?.shipments?.monthly ?? shipments.length;
 
+  const getStatusKey = (s) => (s?.statusRaw || s?.status || '').toUpperCase().trim().replace(/\s+/g, '_');
+
   const statusCounts = adminStats?.shipments?.byStatus || {
-    PENDING_VERIFICATION: shipments.filter(s => s.status === 'PENDING_VERIFICATION').length,
-    VERIFIED: shipments.filter(s => s.status === 'VERIFIED').length,
-    READY_FOR_DISPATCH: shipments.filter(s => s.status === 'READY_FOR_DISPATCH').length,
-    IN_TRANSIT: shipments.filter(s => s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT').length,
-    OUT_FOR_DELIVERY: shipments.filter(s => s.status === 'OUT_FOR_DELIVERY').length,
-    DELIVERED: shipments.filter(s => s.status === 'DELIVERED').length,
-    CANCELLED: shipments.filter(s => s.status === 'CANCELLED').length,
-    REJECTED: shipments.filter(s => s.status === 'REJECTED').length
+    PENDING_VERIFICATION: shipments.filter(s => {
+      const st = getStatusKey(s);
+      return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    }).length,
+    VERIFIED: shipments.filter(s => getStatusKey(s) === 'VERIFIED').length,
+    READY_FOR_DISPATCH: shipments.filter(s => getStatusKey(s) === 'READY_FOR_DISPATCH').length,
+    IN_TRANSIT: shipments.filter(s => getStatusKey(s) === 'IN_TRANSIT').length,
+    OUT_FOR_DELIVERY: shipments.filter(s => getStatusKey(s) === 'OUT_FOR_DELIVERY').length,
+    DELIVERED: shipments.filter(s => getStatusKey(s) === 'DELIVERED').length,
+    CANCELLED: shipments.filter(s => getStatusKey(s) === 'CANCELLED').length,
+    REJECTED: shipments.filter(s => getStatusKey(s) === 'REJECTED').length
   };
 
   const usersCount = adminStats?.users || {
@@ -90,12 +95,13 @@ export default function AdminDashboardView({
   };
 
   const filteredShipments = shipments.filter(s => {
+    const st = getStatusKey(s);
     if (filterMode === 'ALL') return true;
-    if (filterMode === 'PENDING_VERIFICATION') return s.status === 'PENDING_VERIFICATION';
-    if (filterMode === 'VERIFIED') return s.status === 'VERIFIED';
-    if (filterMode === 'IN_TRANSIT') return s.status === 'IN_TRANSIT' || s.status === 'IN TRANSIT';
-    if (filterMode === 'OUT_FOR_DELIVERY') return s.status === 'OUT_FOR_DELIVERY';
-    if (filterMode === 'DELIVERED') return s.status === 'DELIVERED';
+    if (filterMode === 'PENDING_VERIFICATION') return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    if (filterMode === 'VERIFIED') return st === 'VERIFIED';
+    if (filterMode === 'IN_TRANSIT') return st === 'IN_TRANSIT';
+    if (filterMode === 'OUT_FOR_DELIVERY') return st === 'OUT_FOR_DELIVERY';
+    if (filterMode === 'DELIVERED') return st === 'DELIVERED';
     return s.method?.toLowerCase().includes(filterMode.toLowerCase());
   });
 

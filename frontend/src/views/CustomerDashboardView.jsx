@@ -141,31 +141,59 @@ export default function CustomerDashboardView({
         ? shipments
         : shipments.filter(s => isShipmentForCustomer(s, { name: adminCustomerFilter, company: adminCustomerFilter, email: adminCustomerFilter })));
 
+  // Helper to normalize status for comparison
+  const normalizeStatus = (status, statusRaw) => {
+    return (statusRaw || status || '').toUpperCase().trim().replace(/\s+/g, '_');
+  };
+
   // Dynamic Stats calculations derived strictly from the customer's records
   const totalShipments = customerShipments.length;
-  const pendingVerificationCount = customerShipments.filter(s => s.status === 'PENDING_VERIFICATION').length;
-  const inTransitCount = customerShipments.filter(s => s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT').length;
-  const outForDeliveryCount = customerShipments.filter(s => s.status === 'OUT_FOR_DELIVERY').length;
-  const deliveredCount = customerShipments.filter(s => s.status === 'DELIVERED').length;
-  const cancelledCount = customerShipments.filter(s => s.status === 'CANCELLED' || s.status === 'REJECTED').length;
+  const pendingVerificationCount = customerShipments.filter(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+  }).length;
+  const inTransitCount = customerShipments.filter(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return st === 'IN_TRANSIT';
+  }).length;
+  const outForDeliveryCount = customerShipments.filter(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return st === 'OUT_FOR_DELIVERY';
+  }).length;
+  const deliveredCount = customerShipments.filter(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return st === 'DELIVERED';
+  }).length;
+  const cancelledCount = customerShipments.filter(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return ['CANCELLED', 'REJECTED', 'DELIVERY_FAILED', 'RETURNED'].includes(st);
+  }).length;
 
   // Active in-transit shipment belonging strictly to this customer
-  const activeInTransitShipment = customerShipments.find(s => s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT') || null;
+  const activeInTransitShipment = customerShipments.find(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return st === 'IN_TRANSIT';
+  }) || null;
 
   // Table filtering and search within this customer's records
   const filteredShipments = customerShipments.filter(s => {
     let matchesFilter = true;
-    if (filterStatus === 'IN TRANSIT' || filterStatus === 'IN_TRANSIT') {
-      matchesFilter = s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT';
-    } else if (filterStatus !== 'ALL') {
-      matchesFilter = s.status === filterStatus;
+    const st = normalizeStatus(s.status, s.statusRaw);
+    const flt = (filterStatus || 'ALL').toUpperCase().trim().replace(/\s+/g, '_');
+
+    if (flt !== 'ALL') {
+      if (flt === 'PENDING_VERIFICATION' || flt === 'PENDING_INTAKE') {
+        matchesFilter = (st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED');
+      } else {
+        matchesFilter = (st === flt);
+      }
     }
 
     const matchesSearch = !searchTerm || 
-      s.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.origin.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.method.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.trackingNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.destination || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.origin || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.method || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.package?.type && s.package.type.toLowerCase().includes(searchTerm.toLowerCase()));
     return matchesFilter && matchesSearch;
   });

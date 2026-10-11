@@ -91,6 +91,9 @@ export default function StaffDashboardView({
 
   const activeShipment = shipments.find(s => s.trackingNumber === selectedTracking) || shipments[0] || null;
 
+  // Helper to normalize status
+  const getStatusKey = (s) => (s?.statusRaw || s?.status || '').toUpperCase().trim().replace(/\s+/g, '_');
+
   // Tab Filtering
   const filteredShipments = shipments.filter(s => {
     // Search match
@@ -102,15 +105,16 @@ export default function StaffDashboardView({
       if (!matchTrack && !matchSender && !matchDest) return false;
     }
 
+    const st = getStatusKey(s);
     if (activeTab === 'ALL') return true;
-    if (activeTab === 'PENDING_VERIFICATION') return s.status === 'PENDING_VERIFICATION';
-    if (activeTab === 'VERIFIED') return s.status === 'VERIFIED';
-    if (activeTab === 'READY_FOR_DISPATCH') return s.status === 'READY_FOR_DISPATCH';
-    if (activeTab === 'IN_TRANSIT') return s.status === 'IN_TRANSIT' || s.status === 'IN TRANSIT';
-    if (activeTab === 'OUT_FOR_DELIVERY') return s.status === 'OUT_FOR_DELIVERY';
-    if (activeTab === 'DELIVERED') return s.status === 'DELIVERED';
+    if (activeTab === 'PENDING_VERIFICATION') return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    if (activeTab === 'VERIFIED') return st === 'VERIFIED';
+    if (activeTab === 'READY_FOR_DISPATCH') return st === 'READY_FOR_DISPATCH';
+    if (activeTab === 'IN_TRANSIT') return st === 'IN_TRANSIT';
+    if (activeTab === 'OUT_FOR_DELIVERY') return st === 'OUT_FOR_DELIVERY';
+    if (activeTab === 'DELIVERED') return st === 'DELIVERED';
     if (activeTab === 'EXCEPTIONS') {
-      return ['REJECTED', 'CANCELLED', 'ON_HOLD', 'DELIVERY_FAILED', 'RETURNED'].includes(s.status);
+      return ['REJECTED', 'CANCELLED', 'ON_HOLD', 'DELIVERY_FAILED', 'RETURNED'].includes(st);
     }
     return true;
   });
@@ -268,12 +272,15 @@ export default function StaffDashboardView({
   };
 
   // Tab counts
-  const countPending = shipments.filter(s => s.status === 'PENDING_VERIFICATION').length;
-  const countVerified = shipments.filter(s => s.status === 'VERIFIED').length;
-  const countReady = shipments.filter(s => s.status === 'READY_FOR_DISPATCH').length;
-  const countTransit = shipments.filter(s => s.status === 'IN_TRANSIT' || s.status === 'IN TRANSIT').length;
-  const countOut = shipments.filter(s => s.status === 'OUT_FOR_DELIVERY').length;
-  const countDelivered = shipments.filter(s => s.status === 'DELIVERED').length;
+  const countPending = shipments.filter(s => {
+    const st = getStatusKey(s);
+    return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+  }).length;
+  const countVerified = shipments.filter(s => getStatusKey(s) === 'VERIFIED').length;
+  const countReady = shipments.filter(s => getStatusKey(s) === 'READY_FOR_DISPATCH').length;
+  const countTransit = shipments.filter(s => getStatusKey(s) === 'IN_TRANSIT').length;
+  const countOut = shipments.filter(s => getStatusKey(s) === 'OUT_FOR_DELIVERY').length;
+  const countDelivered = shipments.filter(s => getStatusKey(s) === 'DELIVERED').length;
 
   return (
     <div className="ace-dashboard-layout">
@@ -497,7 +504,7 @@ export default function StaffDashboardView({
                     </div>
 
                     {/* 1. If PENDING_VERIFICATION */}
-                    {activeShipment.status === 'PENDING_VERIFICATION' && (
+                    {(getStatusKey(activeShipment) === 'PENDING_VERIFICATION' || getStatusKey(activeShipment) === 'PENDING_INTAKE' || getStatusKey(activeShipment) === 'ORDER_CREATED') && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
                           This package was booked as a <strong>Shipment Request</strong>. Staff must physically weigh the package and verify its dimensions before it can proceed into the delivery network.
@@ -517,30 +524,46 @@ export default function StaffDashboardView({
                     )}
 
                     {/* 2. If VERIFIED */}
-                    {activeShipment.status === 'VERIFIED' && (
+                    {getStatusKey(activeShipment) === 'VERIFIED' && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          Physical package verified ({activeShipment.package?.actualWeight || activeShipment.package?.weightKg} kg). Ready to stage for dispatch carrier allocation.
+                          Physical package verified ({activeShipment.package?.actualWeight || activeShipment.package?.weightKg} kg). Ready to move to transit linehaul or stage for dispatch.
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => handleTransition(
-                            'READY_FOR_DISPATCH',
-                            `${activeShipment.sender?.city || 'Accra'} Staging Hub (Bay 2)`,
-                            'Package verified and staged ready for dispatch courier pickup.'
-                          )}
-                          disabled={isSubmitting}
-                          className="ace-btn ace-btn-action"
-                          style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                        >
-                          <ClipboardCheck size={18} />
-                          <span>Stage / Mark Ready for Dispatch</span>
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleTransition(
+                              'IN_TRANSIT',
+                              `Dispatched from ${activeShipment.sender?.city || 'Accra'} Hub en route to ${activeShipment.receiver?.city || activeShipment.destination}`,
+                              'Package acknowledged and dispatched into active linehaul transit.'
+                            )}
+                            disabled={isSubmitting}
+                            className="ace-btn ace-btn-primary"
+                            style={{ flex: 1, minWidth: '180px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          >
+                            <Truck size={18} />
+                            <span>Move to Transit (Dispatch)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTransition(
+                              'READY_FOR_DISPATCH',
+                              `${activeShipment.sender?.city || 'Accra'} Staging Hub (Bay 2)`,
+                              'Package verified and staged ready for dispatch courier pickup.'
+                            )}
+                            disabled={isSubmitting}
+                            className="ace-btn ace-btn-ghost"
+                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '1px solid var(--color-border)' }}
+                          >
+                            <ClipboardCheck size={18} />
+                            <span>Stage for Dispatch</span>
+                          </button>
+                        </div>
                       </div>
                     )}
 
                     {/* 3. If READY_FOR_DISPATCH */}
-                    {activeShipment.status === 'READY_FOR_DISPATCH' && (
+                    {getStatusKey(activeShipment) === 'READY_FOR_DISPATCH' && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
                           Consignment is staged. Hand over to linehaul transport carrier to move shipment into active transit.
@@ -563,7 +586,7 @@ export default function StaffDashboardView({
                     )}
 
                     {/* 4. If IN_TRANSIT */}
-                    {activeShipment.status === 'IN_TRANSIT' || activeShipment.status === 'IN TRANSIT' ? (
+                    {getStatusKey(activeShipment) === 'IN_TRANSIT' ? (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
                           Consignment is currently in transit. When package reaches destination hub, dispatch final-mile courier.
@@ -586,7 +609,7 @@ export default function StaffDashboardView({
                     ) : null}
 
                     {/* 5. If OUT_FOR_DELIVERY */}
-                    {activeShipment.status === 'OUT_FOR_DELIVERY' && (
+                    {getStatusKey(activeShipment) === 'OUT_FOR_DELIVERY' && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
                           Consignment is on final delivery run. Record recipient confirmation upon completed handover.
@@ -609,7 +632,7 @@ export default function StaffDashboardView({
                     )}
 
                     {/* 6. If DELIVERED */}
-                    {activeShipment.status === 'DELIVERED' && (
+                    {getStatusKey(activeShipment) === 'DELIVERED' && (
                       <div style={{ color: '#065F46', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '14px' }}>
                         <CheckCircle2 size={18} color="#10B981" />
                         <span>Shipment cycle completed. Package successfully delivered to consignee.</span>
