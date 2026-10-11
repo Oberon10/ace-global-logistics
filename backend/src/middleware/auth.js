@@ -24,8 +24,10 @@ export const authenticateToken = (req, res, next) => {
     // Extract the raw token string by splitting on space and selecting the second element
     const token = authHeader.split(" ")[1];
 
-    // Verify token validity and signature using the secret key stored in environment variables
-    jwt.verify(token, process.env.JWT_SECRET, (err, decodedUser) => {
+    const jwtSecret = process.env.JWT_SECRET || "ace_logistics_jwt_super_secret_key_2026_secure_token";
+
+    // Verify token validity and signature using the secret key
+    jwt.verify(token, jwtSecret, (err, decodedUser) => {
         // Handle scenario where token verification failed (expired, tampered, or invalid signature)
         if (err) {
             // Return HTTP 403 Forbidden response indicating the token cannot be authorized
@@ -59,7 +61,8 @@ export const optionalAuthenticateToken = (req, res, next) => {
     }
 
     const token = authHeader.split(" ")[1];
-    jwt.verify(token, process.env.JWT_SECRET, (err, decodedUser) => {
+    const jwtSecret = process.env.JWT_SECRET || "ace_logistics_jwt_super_secret_key_2026_secure_token";
+    jwt.verify(token, jwtSecret, (err, decodedUser) => {
         if (!err && decodedUser) {
             req.user = decodedUser;
         } else {

@@ -1,5 +1,14 @@
 
+import dns from "dns";
 import mongoose from "mongoose";
+
+// Configure robust public DNS resolvers (Google & Cloudflare) to ensure MongoDB Atlas
+// SRV records (_mongodb._tcp...) resolve reliably across Windows networks and local ISP routers
+try {
+    dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
+} catch (dnsErr) {
+    console.warn("⚠️ Custom DNS resolver initialization note:", dnsErr.message);
+}
 
 export const isDatabaseConnected = () => {
     return mongoose.connection.readyState === 1;
@@ -30,15 +39,15 @@ const connectDB = async () => {
     // Ensure this application uses MongoDB Atlas.
     if (!primaryUri.startsWith("mongodb+srv://")) {
         throw new Error(
-            "MONGODB_URI must contain your MongoDB Atlas connection string."
+            "MONGODB_URI must contain your MongoDB Atlas connection string (mongodb+srv://)."
         );
     }
 
     connectionPromise = (async () => {
         try {
             await mongoose.connect(primaryUri, {
-                serverSelectionTimeoutMS: 10000,
-                family: 4
+                dbName: "ace_logistics",
+                serverSelectionTimeoutMS: 10000
             });
 
             console.log("✅ MongoDB Atlas connected successfully!");
@@ -51,6 +60,10 @@ const connectDB = async () => {
                 "❌ MongoDB Atlas connection failed:",
                 error.message
             );
+
+            if (error.message.includes("whitelist") || error.message.includes("alert internal error") || error.message.includes("ReplicaSetNoPrimary") || error.message.includes("network socket disconnected")) {
+                console.error("💡 Action Required: Please ensure your current IP address (or 0.0.0.0/0) is added to your MongoDB Atlas Network Access whitelist at cloud.mongodb.com -> Network Access.");
+            }
 
             throw error;
         } finally {

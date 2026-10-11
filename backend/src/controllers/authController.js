@@ -256,7 +256,7 @@ export const generateToken = (user, userType = "USER") => {
  */
 export const register = async (req, res) => {
     try {
-        const { name, email, password, phone, company, country, items } = req.body;
+        const { name, email, password, phone, company, country, items, role, department, station } = req.body;
 
         if (!name || !email || !password) {
             return res.status(400).json({
@@ -288,7 +288,77 @@ export const register = async (req, res) => {
             });
         }
 
-        // Native Mongoose query: Create new customer user
+        const requestedRole = (role || "CUSTOMER").toUpperCase();
+
+        // 1. If registering as STAFF -> persist in Staff collection
+        if (requestedRole === "STAFF" || requestedRole === "DISPATCHER") {
+            const newStaff = await Staff.create({
+                name: name.trim(),
+                email: normalizedEmail,
+                password: password,
+                role: requestedRole,
+                employeeId: `ACE-STF-${Math.floor(1000 + Math.random() * 9000)}`,
+                department: department || company || "Terminal Dispatch",
+                station: station || "Global Dispatch",
+                phone: phone || "",
+                status: "ACTIVE"
+            });
+
+            const token = generateToken(newStaff, "STAFF");
+
+            return res.status(201).json({
+                success: true,
+                message: "Staff member registered successfully in MongoDB.",
+                token,
+                user: {
+                    id: newStaff._id,
+                    _id: newStaff._id,
+                    name: newStaff.name,
+                    email: newStaff.email,
+                    role: newStaff.role,
+                    department: newStaff.department,
+                    station: newStaff.station,
+                    phone: newStaff.phone,
+                    userType: "STAFF",
+                    createdAt: newStaff.createdAt
+                }
+            });
+        }
+
+        // 2. If registering as ADMIN -> persist in Admin collection
+        if (requestedRole === "ADMIN") {
+            const newAdmin = await Admin.create({
+                name: name.trim(),
+                email: normalizedEmail,
+                password: password,
+                role: "ADMIN",
+                title: "Systems Administrator",
+                department: department || "Operations Command",
+                phone: phone || "",
+                status: "ACTIVE"
+            });
+
+            const token = generateToken(newAdmin, "ADMIN");
+
+            return res.status(201).json({
+                success: true,
+                message: "Administrator registered successfully in MongoDB.",
+                token,
+                user: {
+                    id: newAdmin._id,
+                    _id: newAdmin._id,
+                    name: newAdmin.name,
+                    email: newAdmin.email,
+                    role: newAdmin.role,
+                    department: newAdmin.department,
+                    phone: newAdmin.phone,
+                    userType: "ADMIN",
+                    createdAt: newAdmin.createdAt
+                }
+            });
+        }
+
+        // 3. Standard CUSTOMER registration -> persist in User collection
         const newUser = await User.create({
             name: name.trim(),
             email: normalizedEmail,
@@ -836,12 +906,16 @@ export const updateUser = async (req, res) => {
         if (phone) updatePayload.phone = phone;
         if (department) updatePayload.department = department;
 
-        let updated = await User.findByIdAndUpdate(id, updatePayload, { new: true });
-        if (!updated) {
-            updated = await Staff.findByIdAndUpdate(id, updatePayload, { new: true });
-        }
-        if (!updated) {
-            updated = await Admin.findByIdAndUpdate(id, updatePayload, { new: true });
+        let updated = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            updated = await User.findByIdAndUpdate(id, updatePayload, { new: true })
+                   || await Staff.findByIdAndUpdate(id, updatePayload, { new: true })
+                   || await Admin.findByIdAndUpdate(id, updatePayload, { new: true });
+        } else {
+            const emailSearch = id.trim().toLowerCase();
+            updated = await User.findOneAndUpdate({ email: emailSearch }, updatePayload, { new: true })
+                   || await Staff.findOneAndUpdate({ email: emailSearch }, updatePayload, { new: true })
+                   || await Admin.findOneAndUpdate({ email: emailSearch }, updatePayload, { new: true });
         }
 
         if (!updated) {
@@ -867,24 +941,28 @@ export const updateUser = async (req, res) => {
 };
 
 /**
- * Controller: Delete user/staff/admin by ID.
+ * Controller: Delete user/staff/admin by ID or email.
  */
 export const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
 
-        let deleted = await User.findByIdAndDelete(id);
-        if (!deleted) {
-            deleted = await Staff.findByIdAndDelete(id);
-        }
-        if (!deleted) {
-            deleted = await Admin.findByIdAndDelete(id);
+        let deleted = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            deleted = await User.findByIdAndDelete(id)
+                   || await Staff.findByIdAndDelete(id)
+                   || await Admin.findByIdAndDelete(id);
+        } else {
+            const emailSearch = id.trim().toLowerCase();
+            deleted = await User.findOneAndDelete({ email: emailSearch })
+                   || await Staff.findOneAndDelete({ email: emailSearch })
+                   || await Admin.findOneAndDelete({ email: emailSearch });
         }
 
         if (!deleted) {
             return res.status(404).json({
                 success: false,
-                message: "User record not found."
+                message: "User record not found in database."
             });
         }
 
@@ -896,7 +974,7 @@ export const deleteUser = async (req, res) => {
         console.error("❌ Error in deleteUser controller:", error);
         return res.status(500).json({
             success: false,
-            message: "Failed to delete user.",
+            message: "Failed to delete user from database.",
             error: error.message
         });
     }
