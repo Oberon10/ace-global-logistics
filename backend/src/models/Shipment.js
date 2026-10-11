@@ -1,59 +1,69 @@
 // Import the Mongoose library to define schemas, subdocuments, and models
 import mongoose from "mongoose";
 
+// List of all supported shipment lifecycle and exception status codes
+export const SHIPMENT_STATUSES = [
+    // Primary Operational Workflow Lifecycle
+    "PENDING_VERIFICATION",
+    "VERIFIED",
+    "READY_FOR_DISPATCH",
+    "IN_TRANSIT",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
+    // Exception / Hold Stages
+    "REJECTED",
+    "CANCELLED",
+    "ON_HOLD",
+    "DELIVERY_FAILED",
+    "RETURNED",
+    // Legacy compatibility codes
+    "ORDER_CREATED",
+    "PICKED_UP",
+    "EXCEPTION"
+];
+
 // Define the subdocument schema for tracking history audit trail entries
 const trackingHistorySchema = new mongoose.Schema(
     {
         // Status checkpoint code reached at this specific point in time
         status: {
-            // Data type is a string
             type: String,
-            // Field is required for every history record
             required: [true, "Status is required for tracking log"],
-            // Allowed status codes mirroring the master shipment status enum
-            enum: [
-                "ORDER_CREATED",
-                "PICKED_UP",
-                "IN_TRANSIT",
-                "OUT_FOR_DELIVERY",
-                "DELIVERED",
-                "EXCEPTION",
-                "CANCELLED"
-            ]
+            enum: SHIPMENT_STATUSES
         },
         // Physical location or facility where this status checkpoint occurred
         location: {
-            // Data type is a string
             type: String,
-            // Defaults to empty string if location not specified
             default: ""
         },
         // Human-readable description or notes for the tracking event
         description: {
-            // Data type is a string
             type: String,
-            // Defaults to empty string if description not provided
             default: ""
+        },
+        // Optional notes or justification explaining this checkpoint
+        note: {
+            type: String,
+            default: ""
+        },
+        // Role of user who performed the action (CUSTOMER, STAFF, ADMIN, SUPER_ADMIN)
+        changedByRole: {
+            type: String,
+            default: "CUSTOMER"
         },
         // Exact timestamp when this tracking log checkpoint was recorded
         timestamp: {
-            // Data type is a Date object
             type: Date,
-            // Defaults automatically to current date and time
             default: Date.now
         },
-        // Optional reference to the user (e.g., driver or dispatcher) who logged the status update
+        // Reference to the user/staff who logged the status update
         updatedBy: {
-            // Data type is a MongoDB ObjectId reference
             type: mongoose.Schema.Types.ObjectId,
-            // Relates to the User collection in MongoDB
             ref: "User",
-            // Optional field
             default: null
         }
     },
     {
-        // Disables automatic _id generation for nested tracking history entries to keep payloads clean
         _id: true
     }
 );
@@ -190,60 +200,185 @@ const shipmentSchema = new mongoose.Schema(
                 trim: true
             }
         },
-        // Current operational status of the shipment in transit
+        // Current operational stage of the shipment in the logistics lifecycle
         currentStatus: {
-            // Data type is a string
             type: String,
-            // Restricts status to approved enumerated delivery states
             enum: {
-                // Supported status codes
-                values: [
-                    "ORDER_CREATED",
-                    "PICKED_UP",
-                    "IN_TRANSIT",
-                    "OUT_FOR_DELIVERY",
-                    "DELIVERED",
-                    "EXCEPTION",
-                    "CANCELLED"
-                ],
-                // Error message when an unrecognized status is provided
+                values: SHIPMENT_STATUSES,
                 message: "{VALUE} is not a valid shipment status"
             },
-            // Initial default status assigned when shipment is first booked
-            default: "ORDER_CREATED"
+            // Initial status for customer-created consignments is PENDING_VERIFICATION
+            default: "PENDING_VERIFICATION",
+            index: true
+        },
+        // Secondary alias field for status mirroring
+        shipmentStatus: {
+            type: String,
+            default: "PENDING_VERIFICATION"
+        },
+        // Commercial payment status kept separate from physical operational status
+        paymentStatus: {
+            type: String,
+            enum: {
+                values: ["PENDING", "PAID", "REFUNDED", "FAILED"],
+                message: "Payment status must be PENDING, PAID, REFUNDED, or FAILED"
+            },
+            default: "PENDING",
+            index: true
+        },
+        // Reference to assigned operations staff handling verification or terminal dispatch
+        assignedStaff: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Staff",
+            default: null
+        },
+        // Creator audit trail
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+        createdByRole: {
+            type: String,
+            enum: ["CUSTOMER", "STAFF", "ADMIN", "SUPER_ADMIN", "SYSTEM"],
+            default: "CUSTOMER"
+        },
+        // Verification metadata recorded when staff verifies physical package
+        verifiedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Staff",
+            default: null
+        },
+        verifiedAt: {
+            type: Date,
+            default: null
+        },
+        verificationNotes: {
+            type: String,
+            default: ""
         },
         // Array of chronological tracking history logs updated via $push operations
         trackingHistory: {
-            // Uses the trackingHistorySchema subdocument definition
             type: [trackingHistorySchema],
-            // Initializes to an empty array upon document creation
             default: []
         },
-        // Metadata describing package specifications (weight, dimensions, cargo type)
+        // Metadata describing package specifications (weight, dimensions, condition)
         packageDetails: {
-            // Weight of the package in kilograms
-            weightKg: {
-                // Numeric weight value
+            // Customer submitted estimated weight (kg)
+            estimatedWeight: {
                 type: Number,
-                // Minimum weight must be positive
+                default: 1.0,
+                min: [0, "Weight cannot be negative"]
+            },
+            // Staff verified actual measured weight (kg)
+            actualWeight: {
+                type: Number,
+                default: null,
+                min: [0, "Actual weight cannot be negative"]
+            },
+            // Primary weight value (kept for backward compatibility; reflects actual if verified, else estimated)
+            weightKg: {
+                type: Number,
                 min: [0, "Weight cannot be negative"],
-                // Default fallback weight
                 default: 1.0
             },
-            // Category or description of items being shipped (e.g., Electronics, Documents)
-            category: {
-                // Data type is string
+            // Customer submitted estimated dimensions string (e.g. "60 × 45 × 40 cm")
+            estimatedDimensions: {
                 type: String,
-                // Defaults to General Goods
+                default: ""
+            },
+            // Staff verified actual dimensions string
+            actualDimensions: {
+                type: String,
+                default: ""
+            },
+            // Backward compatible dimensions string
+            dimensions: {
+                type: String,
+                default: ""
+            },
+            // Physical package condition observed during staff verification (e.g. "Good", "Intact", "Damaged")
+            condition: {
+                type: String,
+                default: "Intact / Standard Packaging"
+            },
+            // Fragile or special handling instructions
+            specialHandling: {
+                type: String,
+                default: ""
+            },
+            // Staff verification notes specific to package
+            verificationNotes: {
+                type: String,
+                default: ""
+            },
+            // Category or description of items being shipped
+            category: {
+                type: String,
                 default: "General Freight"
             },
             // Estimated delivery date calculated at booking time
             estimatedDelivery: {
-                // Data type is Date
                 type: Date,
-                // Optional default null
                 default: null
+            },
+            // Number of pieces/packages
+            pieces: {
+                type: Number,
+                default: 1
+            },
+            // Declared monetary value
+            declaredValue: {
+                type: String,
+                default: ""
+            },
+            // Insurance coverage description
+            insurance: {
+                type: String,
+                default: ""
+            },
+            // Security seal barcode / identifier
+            sealNumber: {
+                type: String,
+                default: ""
             }
+        },
+        // Customer / company booking display name
+        customer: {
+            type: String,
+            default: ""
+        },
+        // Shipping method (e.g., Air Freight Priority, Ocean Freight)
+        shippingMethod: {
+            type: String,
+            default: "Air Freight Priority"
+        },
+        // Sender detailed contact and address info
+        senderDetails: {
+            name: { type: String, default: "" },
+            company: { type: String, default: "" },
+            phone: { type: String, default: "" },
+            email: { type: String, default: "" },
+            address: { type: String, default: "" },
+            city: { type: String, default: "" },
+            country: { type: String, default: "" }
+        },
+        // Consignee / Receiver detailed delivery contact info
+        receiver: {
+            name: { type: String, default: "" },
+            company: { type: String, default: "" },
+            phone: { type: String, default: "" },
+            email: { type: String, default: "" },
+            address: { type: String, default: "" },
+            city: { type: String, default: "" },
+            country: { type: String, default: "" }
+        },
+        // Financial invoice charges summary
+        charges: {
+            freight: { type: Number, default: 0 },
+            fuelSurcharge: { type: Number, default: 0 },
+            customsHandling: { type: Number, default: 0 },
+            total: { type: Number, default: 0 }
         }
     },
     {
@@ -251,6 +386,26 @@ const shipmentSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+// Pre-save hook: ensure shipmentStatus mirrors currentStatus and weightKg/dimensions remain synced
+shipmentSchema.pre("save", function (next) {
+    if (this.currentStatus) {
+        this.shipmentStatus = this.currentStatus;
+    }
+    if (this.packageDetails) {
+        if (this.packageDetails.actualWeight !== null && this.packageDetails.actualWeight !== undefined) {
+            this.packageDetails.weightKg = this.packageDetails.actualWeight;
+        } else if (this.packageDetails.estimatedWeight) {
+            this.packageDetails.weightKg = this.packageDetails.estimatedWeight;
+        }
+        if (this.packageDetails.actualDimensions) {
+            this.packageDetails.dimensions = this.packageDetails.actualDimensions;
+        } else if (this.packageDetails.estimatedDimensions) {
+            this.packageDetails.dimensions = this.packageDetails.estimatedDimensions;
+        }
+    }
+    next();
+});
 
 // Compile the Mongoose model from the schema or reuse existing compiled model
 const Shipment = mongoose.models.Shipment || mongoose.model("Shipment", shipmentSchema);
