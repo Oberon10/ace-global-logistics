@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 // List of all supported shipment lifecycle and exception status codes
 export const SHIPMENT_STATUSES = [
     // Primary Operational Workflow Lifecycle
+    "PENDING",
     "PENDING_VERIFICATION",
     "VERIFIED",
     "READY_FOR_DISPATCH",
@@ -207,14 +208,14 @@ const shipmentSchema = new mongoose.Schema(
                 values: SHIPMENT_STATUSES,
                 message: "{VALUE} is not a valid shipment status"
             },
-            // Initial status for customer-created consignments is PENDING_VERIFICATION
-            default: "PENDING_VERIFICATION",
+            // Initial status for customer-created consignments is PENDING
+            default: "PENDING",
             index: true
         },
         // Secondary alias field for status mirroring
         shipmentStatus: {
             type: String,
-            default: "PENDING_VERIFICATION"
+            default: "PENDING"
         },
         // Commercial payment status kept separate from physical operational status
         paymentStatus: {
@@ -254,6 +255,34 @@ const shipmentSchema = new mongoose.Schema(
             default: null
         },
         verificationNotes: {
+            type: String,
+            default: ""
+        },
+        // Dispatch metadata recorded when staff dispatches shipment into transit
+        dispatchedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Staff",
+            default: null
+        },
+        dispatchedAt: {
+            type: Date,
+            default: null
+        },
+        dispatchNotes: {
+            type: String,
+            default: ""
+        },
+        // Delivery confirmation metadata recorded when staff confirms delivery
+        deliveredBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Staff",
+            default: null
+        },
+        deliveredAt: {
+            type: Date,
+            default: null
+        },
+        deliveryNotes: {
             type: String,
             default: ""
         },

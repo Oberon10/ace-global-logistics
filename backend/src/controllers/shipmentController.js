@@ -13,15 +13,16 @@ import { createNotification } from "./notificationController.js";
  * PENDING_VERIFICATION -> VERIFIED -> READY_FOR_DISPATCH -> IN_TRANSIT -> OUT_FOR_DELIVERY -> DELIVERED
  */
 const ALLOWED_STATUS_TRANSITIONS = {
-    "PENDING_VERIFICATION": ["VERIFIED", "REJECTED", "CANCELLED", "ON_HOLD"],
-    "VERIFIED": ["READY_FOR_DISPATCH", "IN_TRANSIT", "ON_HOLD", "CANCELLED"],
-    "READY_FOR_DISPATCH": ["IN_TRANSIT", "ON_HOLD", "CANCELLED"],
-    "IN_TRANSIT": ["OUT_FOR_DELIVERY", "ON_HOLD", "DELIVERY_FAILED", "RETURNED"],
+    "PENDING": ["VERIFIED", "IN_TRANSIT", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
+    "PENDING_VERIFICATION": ["VERIFIED", "IN_TRANSIT", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
+    "VERIFIED": ["READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "ON_HOLD", "CANCELLED"],
+    "READY_FOR_DISPATCH": ["IN_TRANSIT", "OUT_FOR_DELIVERY", "ON_HOLD", "CANCELLED"],
+    "IN_TRANSIT": ["OUT_FOR_DELIVERY", "DELIVERED", "ON_HOLD", "DELIVERY_FAILED", "RETURNED"],
     "OUT_FOR_DELIVERY": ["DELIVERED", "DELIVERY_FAILED", "RETURNED", "ON_HOLD"],
     "DELIVERY_FAILED": ["OUT_FOR_DELIVERY", "RETURNED", "ON_HOLD", "DELIVERED"],
-    "ON_HOLD": ["PENDING_VERIFICATION", "VERIFIED", "READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "CANCELLED"],
+    "ON_HOLD": ["PENDING", "PENDING_VERIFICATION", "VERIFIED", "READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "CANCELLED"],
     // Backward compatibility mappings for legacy data
-    "ORDER_CREATED": ["PENDING_VERIFICATION", "VERIFIED", "PICKED_UP", "IN_TRANSIT", "CANCELLED"],
+    "ORDER_CREATED": ["PENDING", "PENDING_VERIFICATION", "VERIFIED", "PICKED_UP", "IN_TRANSIT", "CANCELLED"],
     "PICKED_UP": ["IN_TRANSIT", "READY_FOR_DISPATCH", "ON_HOLD"],
     "RETURNED": ["ON_HOLD", "DELIVERED"]
 };
@@ -174,8 +175,8 @@ export const createShipment = async (req, res) => {
         }
 
         // 5. Initial status enforcement
-        // Customer submissions ALWAYS start as PENDING_VERIFICATION
-        let initialStatus = "PENDING_VERIFICATION";
+        // Customer submissions ALWAYS start as PENDING
+        let initialStatus = "PENDING";
         const callerRole = (req.user?.role || "CUSTOMER").toUpperCase();
 
         // Staff or Admin can optionally set an explicit initial status if booking on-site
@@ -282,7 +283,7 @@ export const createShipment = async (req, res) => {
             initialHistory = [{
                 status: initialStatus,
                 location: normalizedOrigin.city || normalizedOrigin.address || "Intake Terminal",
-                description: initialStatus === "PENDING_VERIFICATION"
+                description: (initialStatus === "PENDING" || initialStatus === "PENDING_VERIFICATION")
                     ? "Shipment request received. Physical package verification pending at intake terminal."
                     : `Shipment order created with status ${initialStatus}.`,
                 note: "Consignment created online / intake desk.",
@@ -586,16 +587,29 @@ export const updateShipmentStatus = async (req, res) => {
             changedByRole: userRole || "STAFF"
         };
 
-        // Update shipment
+        // Update shipment status and milestone records
         shipment.currentStatus = normalizedStatus;
         shipment.shipmentStatus = normalizedStatus;
+
+        if (normalizedStatus === "IN_TRANSIT") {
+            shipment.dispatchedBy = req.user?.id || shipment.assignedStaff || null;
+            shipment.dispatchedAt = new Date();
+            if (auditNote) shipment.dispatchNotes = auditNote;
+        } else if (normalizedStatus === "DELIVERED") {
+            shipment.deliveredBy = req.user?.id || shipment.assignedStaff || null;
+            shipment.deliveredAt = new Date();
+            if (auditNote) shipment.deliveryNotes = auditNote;
+        }
+
         shipment.trackingHistory.push(newHistoryLog);
 
         await shipment.save();
 
         const updatedShipment = await Shipment.findById(shipment._id)
             .populate("sender", "name email")
-            .populate("verifiedBy", "name email")
+            .populate("verifiedBy", "name email station department")
+            .populate("dispatchedBy", "name email station department")
+            .populate("deliveredBy", "name email station department")
             .populate("assignedDriver", "name email");
 
         // Dispatch status update in-app notification
@@ -660,6 +674,8 @@ export const getAllShipments = async (req, res) => {
             .sort({ createdAt: -1 })
             .populate("sender", "name email")
             .populate("verifiedBy", "name email station department")
+            .populate("dispatchedBy", "name email station department")
+            .populate("deliveredBy", "name email station department")
             .populate("assignedDriver", "name email");
 
         return res.status(200).json({
@@ -691,6 +707,8 @@ export const getShipmentById = async (req, res) => {
         const shipment = await Shipment.findOne(filter)
             .populate("sender", "name email")
             .populate("verifiedBy", "name email station department")
+            .populate("dispatchedBy", "name email station department")
+            .populate("deliveredBy", "name email station department")
             .populate("assignedDriver", "name email");
 
         if (!shipment) {
@@ -749,6 +767,8 @@ export const getShipmentByTrackingNumber = async (req, res) => {
         })
             .populate("sender", "name email")
             .populate("verifiedBy", "name email station department")
+            .populate("dispatchedBy", "name email station department")
+            .populate("deliveredBy", "name email station department")
             .populate("assignedDriver", "name email");
 
         if (!shipment) {
@@ -820,6 +840,7 @@ export const getShipmentStats = async (req, res) => {
         ]);
 
         const statusCounts = {
+            PENDING: 0,
             PENDING_VERIFICATION: 0,
             VERIFIED: 0,
             READY_FOR_DISPATCH: 0,
@@ -833,11 +854,17 @@ export const getShipmentStats = async (req, res) => {
         };
 
         statusAggregation.forEach(item => {
-            const key = item._id || "PENDING_VERIFICATION";
-            if (key === "ORDER_CREATED") statusCounts.PENDING_VERIFICATION += item.count;
-            else if (key === "PICKED_UP") statusCounts.IN_TRANSIT += item.count;
-            else if (statusCounts[key] !== undefined) statusCounts[key] = item.count;
-            else statusCounts[key] = item.count;
+            const key = item._id || "PENDING";
+            if (key === "ORDER_CREATED" || key === "PENDING" || key === "PENDING_VERIFICATION") {
+                statusCounts.PENDING = (statusCounts.PENDING || 0) + item.count;
+                statusCounts.PENDING_VERIFICATION = (statusCounts.PENDING_VERIFICATION || 0) + item.count;
+            } else if (key === "PICKED_UP") {
+                statusCounts.IN_TRANSIT += item.count;
+            } else if (statusCounts[key] !== undefined) {
+                statusCounts[key] = item.count;
+            } else {
+                statusCounts[key] = item.count;
+            }
         });
 
         // 4. Revenue aggregation from charges.total
