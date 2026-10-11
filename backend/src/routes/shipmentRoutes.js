@@ -4,10 +4,13 @@ import { Router } from "express";
 // Import shipment controller functions handling business logic
 import {
     createShipment,
+    verifyShipment,
     updateShipmentStatus,
     getShipmentByTrackingNumber,
     getAllShipments,
-    getShipmentById
+    getShipmentById,
+    getShipmentStats,
+    deleteShipment
 } from "../controllers/shipmentController.js";
 
 // Import authentication and authorization middleware functions
@@ -27,8 +30,19 @@ router.get(
 );
 
 /**
+ * @route   GET /api/shipments/stats/admin
+ * @desc    Retrieve real operational statistics from MongoDB (Users, Shipments, Revenue)
+ * @access  Authenticated / Public fallback
+ */
+router.get(
+    "/stats/admin",
+    optionalAuthenticateToken,
+    getShipmentStats
+);
+
+/**
  * @route   POST /api/shipments
- * @desc    Create a new shipment booking with auto-generated tracking code
+ * @desc    Create a new shipment booking (customer request or staff booking)
  * @access  Public / Authenticated
  */
 router.post(
@@ -38,9 +52,20 @@ router.post(
 );
 
 /**
+ * @route   PATCH /api/shipments/:id/verify
+ * @desc    Staff verifies physical package, records actual measurements and condition
+ * @access  Authenticated (Staff / Admin)
+ */
+router.patch(
+    "/:id/verify",
+    optionalAuthenticateToken,
+    verifyShipment
+);
+
+/**
  * @route   PATCH /api/shipments/:id/status
- * @desc    Update current operational status and push new tracking checkpoint log
- * @access  Public / Authenticated
+ * @desc    Update current operational status adhering to lifecycle transition rules
+ * @access  Authenticated (Staff / Admin)
  */
 router.patch(
     "/:id/status",
@@ -61,8 +86,8 @@ router.get(
 
 /**
  * @route   GET /api/shipments/:id
- * @desc    Retrieve detailed shipment record by MongoDB ObjectId
- * @access  Public / Authenticated
+ * @desc    Retrieve detailed shipment record by MongoDB ObjectId or trackingNumber
+ * @access  Public / Authenticated (Enforces customer data ownership)
  */
 router.get(
     "/:id",
@@ -70,6 +95,16 @@ router.get(
     getShipmentById
 );
 
+/**
+ * @route   DELETE /api/shipments/:id
+ * @desc    Delete a shipment record by MongoDB ObjectId or trackingNumber
+ * @access  Authenticated (Admin only)
+ */
+router.delete(
+    "/:id",
+    optionalAuthenticateToken,
+    deleteShipment
+);
 
 // Export router instance as the default ES module export
 export default router;

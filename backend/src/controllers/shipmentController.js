@@ -1,35 +1,56 @@
 // Import Mongoose library
 import mongoose from "mongoose";
 
-// Import the Mongoose Shipment data model
-import Shipment from "../models/Shipment.js";
+// Import domain models
+import Shipment, { SHIPMENT_STATUSES } from "../models/Shipment.js";
+import User from "../models/User.js";
+import Staff from "../models/staff.js";
+import Admin from "../models/admin.js";
+import { createNotification } from "./notificationController.js";
 
 /**
- * Utility helper function to generate a unique, human-readable logistics tracking number.
- * Format: ACE-XXXXXX-YYYY (e.g., ACE-M1X8PQ-7294)
- *
- * @returns {string} Unique uppercase tracking number
+ * Valid status transitions matrix enforcing strict operational logistics workflow:
+ * PENDING_VERIFICATION -> VERIFIED -> READY_FOR_DISPATCH -> IN_TRANSIT -> OUT_FOR_DELIVERY -> DELIVERED
  */
-const generateTrackingNumber = () => {
-    // Generate timestamp component converted to base-36 alphanumeric string
-    const timestampPart = Date.now().toString(36).toUpperCase();
-
-    // Generate random 4-digit numeric code
-    const randomPart = Math.floor(1000 + Math.random() * 9000);
-
-    // Combine prefix and random fragments into standardized ACE tracking format
-    return `ACE-${timestampPart}-${randomPart}`;
+const ALLOWED_STATUS_TRANSITIONS = {
+    "PENDING_VERIFICATION": ["VERIFIED", "REJECTED", "CANCELLED", "ON_HOLD"],
+    "VERIFIED": ["READY_FOR_DISPATCH", "ON_HOLD", "CANCELLED"],
+    "READY_FOR_DISPATCH": ["IN_TRANSIT", "ON_HOLD", "CANCELLED"],
+    "IN_TRANSIT": ["OUT_FOR_DELIVERY", "ON_HOLD", "DELIVERY_FAILED", "RETURNED"],
+    "OUT_FOR_DELIVERY": ["DELIVERED", "DELIVERY_FAILED", "RETURNED", "ON_HOLD"],
+    "DELIVERY_FAILED": ["OUT_FOR_DELIVERY", "RETURNED", "ON_HOLD", "DELIVERED"],
+    "ON_HOLD": ["PENDING_VERIFICATION", "VERIFIED", "READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "CANCELLED"],
+    // Backward compatibility mappings for legacy data
+    "ORDER_CREATED": ["PENDING_VERIFICATION", "VERIFIED", "PICKED_UP", "IN_TRANSIT", "CANCELLED"],
+    "PICKED_UP": ["IN_TRANSIT", "READY_FOR_DISPATCH", "ON_HOLD"],
+    "RETURNED": ["ON_HOLD", "DELIVERED"]
 };
 
 /**
- * Controller: Create a new logistics shipment.
- * Automatically handles both object and string formats for origin & destination,
- * validates sender/driver ObjectId references safely, preserves client tracking numbers,
- * initializes currentStatus to 'ORDER_CREATED' or custom status, and saves to MongoDB.
+ * Utility helper function to generate a stable, human-readable logistics tracking number.
+ * Format: ACE-2026-XXXXXX (e.g., ACE-2026-819402)
+ *
+ * @returns {string} Unique uppercase tracking number
+ */
+export const generateTrackingNumber = () => {
+    const year = new Date().getFullYear();
+    const randomDigits = Math.floor(100000 + Math.random() * 900000);
+    return `ACE-${year}-${randomDigits}`;
+};
+
+/**
+ * Controller: Create a new shipment booking.
+ * 
+ * CORE REQUIREMENT:
+ * Customer creates shipment request -> Initial status is PENDING_VERIFICATION.
+ * Customer submits estimated weight and dimensions.
+ * Physical verification is performed subsequently by ACE Logistics staff.
+ * 
+ * If created by Staff for a walk-in customer:
+ * Assigns customer details and enters the same lifecycle.
  */
 export const createShipment = async (req, res) => {
     try {
-        // Extract shipment payload fields from incoming HTTP request body
         const { 
             origin, 
             destination, 
@@ -39,10 +60,12 @@ export const createShipment = async (req, res) => {
             trackingNumber: customTracking,
             status: customStatus,
             method,
-            timeline
+            timeline,
+            paymentStatus,
+            notes
         } = req.body;
 
-        // Normalize origin: support string ("City, Country") or object
+        // 1. Normalize origin: support string ("City, Country") or object
         let normalizedOrigin = {};
         if (typeof origin === "string") {
             const parts = origin.split(",").map(s => s.trim());
@@ -50,15 +73,15 @@ export const createShipment = async (req, res) => {
                 address: origin,
                 city: parts[0] || "Origin Hub",
                 state: "",
-                country: parts[1] || "USA",
+                country: parts[1] || "Ghana",
                 postalCode: ""
             };
         } else if (typeof origin === "object" && origin !== null) {
             normalizedOrigin = {
                 address: origin.address || origin.city || "Origin Facility",
-                city: origin.city || "Origin Facility",
+                city: origin.city || "Origin Hub",
                 state: origin.state || "",
-                country: origin.country || "USA",
+                country: origin.country || "Ghana",
                 postalCode: origin.postalCode || ""
             };
         } else {
@@ -66,12 +89,12 @@ export const createShipment = async (req, res) => {
                 address: "Origin Facility Hub",
                 city: "Origin Hub",
                 state: "",
-                country: "USA",
+                country: "Ghana",
                 postalCode: ""
             };
         }
 
-        // Normalize destination: support string ("City, Country") or object
+        // 2. Normalize destination: support string ("City, Country") or object
         let normalizedDestination = {};
         if (typeof destination === "string") {
             const parts = destination.split(",").map(s => s.trim());
@@ -79,15 +102,15 @@ export const createShipment = async (req, res) => {
                 address: destination,
                 city: parts[0] || "Destination Hub",
                 state: "",
-                country: parts[1] || "USA",
+                country: parts[1] || "United Kingdom",
                 postalCode: ""
             };
         } else if (typeof destination === "object" && destination !== null) {
             normalizedDestination = {
                 address: destination.address || destination.city || "Destination Facility",
-                city: destination.city || "Destination Facility",
+                city: destination.city || "Destination Hub",
                 state: destination.state || "",
-                country: destination.country || "USA",
+                country: destination.country || "United Kingdom",
                 postalCode: destination.postalCode || ""
             };
         } else {
@@ -95,58 +118,170 @@ export const createShipment = async (req, res) => {
                 address: "Destination Facility Hub",
                 city: "Destination Hub",
                 state: "",
-                country: "USA",
+                country: "United Kingdom",
                 postalCode: ""
             };
         }
 
-        // Determine sender user ID safely (only set if valid MongoDB ObjectId)
+        // 3. Determine sender / customer reference safely
         let senderId = null;
-        const candidateSender = sender || req.user?.id;
+        let candidateSender = sender || req.user?.id;
         if (candidateSender && typeof candidateSender === "string" && mongoose.Types.ObjectId.isValid(candidateSender)) {
             senderId = candidateSender;
+        } else if (candidateSender && typeof candidateSender === "object" && candidateSender._id) {
+            senderId = candidateSender._id;
         }
 
-        // Validate driver identifier
+        // If staff created the shipment and provided customer email, lookup user if exists
+        let senderEmailInput = typeof sender === "object" ? sender.email : "";
+        if (!senderId && senderEmailInput) {
+            const matchedUser = await User.findOne({ email: senderEmailInput.trim().toLowerCase() });
+            if (matchedUser) senderId = matchedUser._id;
+        }
+
+        // Driver identifier
         let driverId = null;
         if (assignedDriver && typeof assignedDriver === "string" && mongoose.Types.ObjectId.isValid(assignedDriver)) {
             driverId = assignedDriver;
         }
 
-        // Use custom tracking identifier if provided, else generate new
-        const trackingNumber = customTracking 
+        // 4. Stable unique tracking number generation
+        let trackingNumber = customTracking 
             ? String(customTracking).trim().toUpperCase() 
             : generateTrackingNumber();
 
-        // Normalize initial status to schema enum
-        let initialStatus = "ORDER_CREATED";
-        if (customStatus) {
-            const cleaned = String(customStatus).trim().toUpperCase().replace(/\s+/g, "_");
-            const valid = ["ORDER_CREATED", "PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION", "CANCELLED"];
-            if (valid.includes(cleaned)) {
-                initialStatus = cleaned;
-            } else if (cleaned === "TRANSIT") {
-                initialStatus = "IN_TRANSIT";
+        let exists = await Shipment.findOne({ trackingNumber });
+        if (exists) {
+            if (customTracking) {
+                trackingNumber = `${trackingNumber}-${Math.floor(100 + Math.random() * 900)}`;
+            }
+            while (await Shipment.findOne({ trackingNumber })) {
+                trackingNumber = generateTrackingNumber();
             }
         }
 
-        // Construct initial tracking audit trail log
-        const initialTrackingLog = {
-            status: initialStatus,
-            location: normalizedOrigin.city || normalizedOrigin.address || "Origin Hub",
-            description: "Shipment order created and registered in the ACE logistics system.",
-            timestamp: new Date(),
-            updatedBy: senderId
-        };
+        // 5. Initial status enforcement
+        // Customer submissions ALWAYS start as PENDING_VERIFICATION
+        let initialStatus = "PENDING_VERIFICATION";
+        const callerRole = (req.user?.role || "CUSTOMER").toUpperCase();
 
-        // Normalize package details
+        // Staff or Admin can optionally set an explicit initial status if booking on-site
+        if ((callerRole === "STAFF" || callerRole === "ADMIN" || callerRole === "SUPER_ADMIN") && customStatus) {
+            const cleaned = String(customStatus).trim().toUpperCase().replace(/\s+/g, "_");
+            if (SHIPMENT_STATUSES.includes(cleaned)) {
+                initialStatus = cleaned;
+            }
+        }
+
+        // Sender details extraction
+        let senderDetailsObj = {};
+        if (sender && typeof sender === "object") {
+            senderDetailsObj = {
+                name: sender.name || "",
+                company: sender.company || "",
+                phone: sender.phone || "",
+                email: sender.email || "",
+                address: sender.address || normalizedOrigin.address,
+                city: sender.city || normalizedOrigin.city,
+                country: sender.country || normalizedOrigin.country
+            };
+        } else if (req.user) {
+            senderDetailsObj = {
+                name: req.user.name || "",
+                company: req.user.company || "",
+                phone: req.user.phone || "",
+                email: req.user.email || "",
+                address: normalizedOrigin.address,
+                city: normalizedOrigin.city,
+                country: normalizedOrigin.country
+            };
+        }
+
+        // Receiver details extraction
+        let receiverDetailsObj = {};
+        const inputReceiver = req.body.receiver;
+        if (inputReceiver && typeof inputReceiver === "object") {
+            receiverDetailsObj = {
+                name: inputReceiver.name || "",
+                company: inputReceiver.company || "",
+                phone: inputReceiver.phone || "",
+                email: inputReceiver.email || "",
+                address: inputReceiver.address || normalizedDestination.address,
+                city: inputReceiver.city || normalizedDestination.city,
+                country: inputReceiver.country || normalizedDestination.country
+            };
+        }
+
+        // Customer display name
+        const customerDisplayName = req.body.customer 
+            || senderDetailsObj.company 
+            || senderDetailsObj.name 
+            || (typeof sender === "string" ? sender : "") 
+            || "Commercial Freight Consignor";
+
+        // 6. Package details: preserve estimated vs verified measurements
+        const pkg = packageDetails || req.body.package || {};
+        const rawWeight = Number(pkg.estimatedWeight || pkg.weightKg || pkg.weight) || 1.0;
+        const rawDimensions = String(pkg.estimatedDimensions || pkg.dimensions || "");
+
         const normalizedPackage = {
-            weightKg: Number(packageDetails?.weightKg || packageDetails?.weight) || 1.0,
-            category: String(packageDetails?.category || packageDetails?.type || method || "General Freight"),
-            estimatedDelivery: packageDetails?.estimatedDelivery ? new Date(packageDetails.estimatedDelivery) : null
+            estimatedWeight: rawWeight,
+            actualWeight: pkg.actualWeight ? Number(pkg.actualWeight) : null,
+            weightKg: pkg.actualWeight ? Number(pkg.actualWeight) : rawWeight,
+            estimatedDimensions: rawDimensions,
+            actualDimensions: String(pkg.actualDimensions || ""),
+            dimensions: pkg.actualDimensions ? String(pkg.actualDimensions) : rawDimensions,
+            condition: String(pkg.condition || "Intact / Standard Packaging"),
+            specialHandling: String(pkg.specialHandling || notes || ""),
+            verificationNotes: String(pkg.verificationNotes || ""),
+            category: String(pkg.category || pkg.type || method || "General Freight"),
+            pieces: Number(pkg.pieces) || 1,
+            declaredValue: String(pkg.declaredValue || ""),
+            insurance: String(pkg.insurance || "Standard Commercial Liability"),
+            sealNumber: String(pkg.sealNumber || `ACE-SL-${trackingNumber.slice(-5)}`),
+            estimatedDelivery: pkg.estimatedDelivery ? new Date(pkg.estimatedDelivery) : null
         };
 
-        // Persist the new shipment document in MongoDB collection
+        const shippingMethodName = String(method || req.body.shippingMethod || "Air Freight Priority");
+
+        const normalizedCharges = {
+            freight: Number(req.body.charges?.freight) || 0,
+            fuelSurcharge: Number(req.body.charges?.fuelSurcharge || req.body.charges?.fuel) || 0,
+            customsHandling: Number(req.body.charges?.customsHandling || req.body.charges?.customs) || 35,
+            total: Number(req.body.charges?.total) || 0
+        };
+
+        // 7. Initial status history audit trail
+        let initialHistory = [];
+        if (Array.isArray(timeline) && timeline.length > 0) {
+            initialHistory = timeline.map(t => ({
+                status: initialStatus,
+                location: t.location || normalizedOrigin.city || "Intake Terminal",
+                description: t.description || t.title || "Shipment request registered in ACE Logistics network.",
+                note: t.note || "Initial electronic manifest creation.",
+                timestamp: t.date ? new Date(t.date) : new Date(),
+                updatedBy: req.user?.id || senderId,
+                changedByRole: callerRole
+            }));
+        } else {
+            initialHistory = [{
+                status: initialStatus,
+                location: normalizedOrigin.city || normalizedOrigin.address || "Intake Terminal",
+                description: initialStatus === "PENDING_VERIFICATION"
+                    ? "Shipment request received. Physical package verification pending at intake terminal."
+                    : `Shipment order created with status ${initialStatus}.`,
+                note: "Consignment created online / intake desk.",
+                timestamp: new Date(),
+                updatedBy: req.user?.id || senderId,
+                changedByRole: callerRole
+            }];
+        }
+
+        // Creator identification
+        const createdById = req.user?.id || senderId || null;
+        const createdByRole = callerRole;
+
+        // 8. Persist new shipment in MongoDB
         const newShipment = await Shipment.create({
             trackingNumber,
             sender: senderId,
@@ -154,14 +289,48 @@ export const createShipment = async (req, res) => {
             origin: normalizedOrigin,
             destination: normalizedDestination,
             currentStatus: initialStatus,
-            trackingHistory: [initialTrackingLog],
-            packageDetails: normalizedPackage
+            shipmentStatus: initialStatus,
+            paymentStatus: paymentStatus || "PENDING",
+            createdBy: createdById,
+            createdByRole,
+            trackingHistory: initialHistory,
+            packageDetails: normalizedPackage,
+            customer: customerDisplayName,
+            shippingMethod: shippingMethodName,
+            senderDetails: senderDetailsObj,
+            receiver: receiverDetailsObj,
+            charges: normalizedCharges
         });
 
-        // Return HTTP 201 Created status code along with the created shipment
+        // 9. Dispatch in-app notifications
+        // A. Notification to customer
+        if (senderDetailsObj.email || senderId) {
+            await createNotification({
+                recipient: senderId,
+                recipientEmail: senderDetailsObj.email,
+                recipientRole: "CUSTOMER",
+                shipment: newShipment._id,
+                trackingNumber,
+                title: "Shipment Request Received",
+                message: `Your shipment request ${trackingNumber} has been received. Consignment is pending physical verification by ACE Logistics staff.`,
+                type: "REQUEST_CREATED"
+            });
+        }
+
+        // B. Notification to operational staff
+        await createNotification({
+            recipient: null,
+            recipientRole: "STAFF",
+            shipment: newShipment._id,
+            trackingNumber,
+            title: "New Consignment Pending Verification",
+            message: `Consignment ${trackingNumber} from ${customerDisplayName} (${normalizedOrigin.city} → ${normalizedDestination.city}) awaits package inspection.`,
+            type: "REQUEST_CREATED"
+        });
+
         return res.status(201).json({
             success: true,
-            message: "Shipment created successfully and stored in MongoDB.",
+            message: "Shipment request created successfully. Awaiting staff package verification.",
             shipment: newShipment
         });
     } catch (error) {
@@ -174,208 +343,317 @@ export const createShipment = async (req, res) => {
     }
 };
 
-
 /**
- * Controller: Update the status of an existing shipment.
- * Uses MongoDB $set to update currentStatus and $push to append a new audit log
- * into the trackingHistory array.
+ * Controller: Staff Package Verification
+ * 
+ * CORE REQUIREMENT:
+ * Staff opens shipment in PENDING_VERIFICATION and records:
+ * - Actual weight
+ * - Actual dimensions
+ * - Package condition
+ * - Special handling requirements
+ * - Verification notes
+ * 
+ * Sets status to VERIFIED (or REJECTED), records staff ID and timestamp,
+ * preserves customer's estimates, and updates shipment history.
  */
-export const updateShipmentStatus = async (req, res) => {
+export const verifyShipment = async (req, res) => {
     try {
-        // Extract shipment identifier from URL request route parameters
         const { id } = req.params;
+        const { 
+            actualWeight, 
+            actualDimensions, 
+            condition, 
+            specialHandling, 
+            verificationNotes, 
+            decision = "APPROVE",
+            sealNumber,
+            location
+        } = req.body;
 
-        // Extract status update fields from incoming HTTP request body
-        const { status, location, description } = req.body;
-
-        // Normalize status to uppercase underscore format
-        let normalizedStatus = String(status || "").trim().toUpperCase().replace(/\s+/g, "_");
-        if (normalizedStatus === "TRANSIT") normalizedStatus = "IN_TRANSIT";
-
-        // List of permitted shipment status enum values
-        const allowedStatuses = [
-            "ORDER_CREATED",
-            "PICKED_UP",
-            "IN_TRANSIT",
-            "OUT_FOR_DELIVERY",
-            "DELIVERED",
-            "EXCEPTION",
-            "CANCELLED"
-        ];
-
-        // Validate that status parameter is provided and exists in allowedStatuses array
-        if (!status || !allowedStatuses.includes(normalizedStatus)) {
-            return res.status(400).json({
+        // Role authorization check: only staff or admin may verify
+        const userRole = (req.user?.role || "").toUpperCase();
+        const allowedRoles = ["STAFF", "DISPATCHER", "OPERATOR", "WAREHOUSE_OPERATOR", "CUSTOMS_OFFICER", "TERMINAL_DISPATCHER", "ADMIN", "SUPER_ADMIN"];
+        if (req.user && !allowedRoles.includes(userRole)) {
+            return res.status(403).json({
                 success: false,
-                message: `Invalid status. Allowed values: [${allowedStatuses.join(", ")}].`
+                message: `Forbidden: User role '${userRole}' is not authorized to verify shipments. Staff credentials required.`
             });
         }
 
-        let updatedById = null;
-        if (req.user?.id && typeof req.user.id === "string" && mongoose.Types.ObjectId.isValid(req.user.id)) {
-            updatedById = req.user.id;
-        }
-
-        // Construct new tracking history audit log object
-        const newHistoryLog = {
-            status: normalizedStatus,
-            location: location || "Transit Hub",
-            description: description || `Shipment status updated to ${normalizedStatus}.`,
-            timestamp: new Date(),
-            updatedBy: updatedById
-        };
-
-        // Determine query filter: support MongoDB _id or trackingNumber
+        // Locate shipment by ID or trackingNumber
         const filter = id.match(/^[0-9a-fA-F]{24}$/) ? { _id: id } : { trackingNumber: id.toUpperCase() };
+        const shipment = await Shipment.findOne(filter);
 
-        // Execute atomic update: $set new currentStatus and $push new history entry
-        const updatedShipment = await Shipment.findOneAndUpdate(
-            filter,
-            {
-                $set: { currentStatus: normalizedStatus },
-                $push: { trackingHistory: newHistoryLog }
-            },
-
-            // Options: return updated document and run Mongoose schema validators
-            {
-                // Return document after update has been applied
-                new: true,
-                // Validate modified fields against schema rules
-                runValidators: true
-            }
-        ).populate("sender", "name email").populate("assignedDriver", "name email");
-
-        // Verify that shipment document was located and updated
-        if (!updatedShipment) {
-            // Return HTTP 404 Not Found if shipment does not exist
+        if (!shipment) {
             return res.status(404).json({
-                // Boolean failure indicator
                 success: false,
-                // Error message
                 message: `Shipment with identifier '${id}' not found.`
             });
         }
 
-        // Return HTTP 200 OK status code with updated shipment document
+        const isRejection = decision.toUpperCase() === "REJECT";
+        const newStatus = isRejection ? "REJECTED" : "VERIFIED";
+
+        // Verification payload updates
+        const verifiedWeight = actualWeight !== undefined && actualWeight !== null 
+            ? Number(actualWeight) 
+            : (shipment.packageDetails?.estimatedWeight || shipment.packageDetails?.weightKg || 1.0);
+        
+        const verifiedDims = actualDimensions || shipment.packageDetails?.estimatedDimensions || shipment.packageDetails?.dimensions || "";
+        const verifiedCondition = condition || "Good / Intact";
+        const notesText = verificationNotes || (isRejection ? "Package rejected during physical intake." : "Package physically inspected, weighed, and verified.");
+
+        // Construct history checkpoint
+        const historyLog = {
+            status: newStatus,
+            location: location || shipment.origin?.city || "Intake Terminal",
+            description: isRejection
+                ? `Package rejected at physical intake: ${notesText}`
+                : `Physical package verified. Actual weight: ${verifiedWeight}kg, dimensions: ${verifiedDims}. Condition: ${verifiedCondition}.`,
+            note: notesText,
+            timestamp: new Date(),
+            updatedBy: req.user?.id || null,
+            changedByRole: userRole || "STAFF"
+        };
+
+        // Recalculate freight charge based on actual weight if approved and freight exists
+        let updatedCharges = { ...(shipment.charges?.toObject ? shipment.charges.toObject() : shipment.charges) };
+        if (!isRejection && verifiedWeight > 0 && updatedCharges.freight > 0) {
+            const oldWeight = shipment.packageDetails?.estimatedWeight || 1;
+            const ratePerKg = oldWeight > 0 ? (updatedCharges.freight / oldWeight) : 10;
+            const newFreight = Math.round(verifiedWeight * ratePerKg);
+            const newFuel = Math.round(newFreight * 0.12);
+            updatedCharges.freight = newFreight;
+            updatedCharges.fuelSurcharge = newFuel;
+            updatedCharges.total = newFreight + newFuel + (updatedCharges.customsHandling || 35);
+        }
+
+        // Execute atomic update
+        shipment.currentStatus = newStatus;
+        shipment.shipmentStatus = newStatus;
+        shipment.verifiedBy = req.user?.id || null;
+        shipment.verifiedAt = new Date();
+        shipment.verificationNotes = notesText;
+        shipment.assignedStaff = req.user?.id || shipment.assignedStaff;
+
+        // Ensure packageDetails object is updated while preserving estimates
+        if (!shipment.packageDetails) shipment.packageDetails = {};
+        shipment.packageDetails.actualWeight = verifiedWeight;
+        shipment.packageDetails.weightKg = verifiedWeight;
+        shipment.packageDetails.actualDimensions = verifiedDims;
+        shipment.packageDetails.dimensions = verifiedDims;
+        shipment.packageDetails.condition = verifiedCondition;
+        if (specialHandling) shipment.packageDetails.specialHandling = specialHandling;
+        shipment.packageDetails.verificationNotes = notesText;
+        if (sealNumber) shipment.packageDetails.sealNumber = sealNumber;
+
+        shipment.charges = updatedCharges;
+        shipment.trackingHistory.push(historyLog);
+
+        await shipment.save();
+
+        const populatedShipment = await Shipment.findById(shipment._id)
+            .populate("sender", "name email")
+            .populate("verifiedBy", "name email station department")
+            .populate("assignedDriver", "name email");
+
+        // Send customer notification
+        const customerEmail = shipment.senderDetails?.email || (shipment.sender?.email);
+        await createNotification({
+            recipient: shipment.sender?._id || shipment.sender,
+            recipientEmail: customerEmail,
+            recipientRole: "CUSTOMER",
+            shipment: shipment._id,
+            trackingNumber: shipment.trackingNumber,
+            title: isRejection ? "Shipment Rejected at Intake" : "Shipment Package Verified",
+            message: isRejection
+                ? `Consignment ${shipment.trackingNumber} was rejected during physical verification: ${notesText}`
+                : `Consignment ${shipment.trackingNumber} has been verified at the terminal. Actual weight: ${verifiedWeight}kg. Status is now VERIFIED.`,
+            type: isRejection ? "EXCEPTION" : "VERIFICATION"
+        });
+
         return res.status(200).json({
-            // Boolean success indicator
             success: true,
-            // Confirmation message
-            message: "Shipment status updated successfully.",
-            // Updated shipment document
-            shipment: updatedShipment
+            message: isRejection 
+                ? "Shipment has been rejected." 
+                : "Package verified successfully. Measurements and condition recorded.",
+            shipment: populatedShipment
         });
     } catch (error) {
-        // Output detailed server error to console
-        console.error("❌ Error in updateShipmentStatus controller:", error);
-
-        // Return HTTP 500 Internal Server Error response
+        console.error("❌ Error in verifyShipment controller:", error);
         return res.status(500).json({
-            // Boolean failure indicator
             success: false,
-            // Error message
-            message: "Failed to update shipment status.",
-            // Detailed technical error message
+            message: "Failed to verify shipment.",
             error: error.message
         });
     }
 };
 
 /**
- * Controller: Retrieve shipment details by tracking number.
- * Public endpoint enabling customers to track parcels without mandatory authentication.
+ * Controller: Update shipment lifecycle status with strict transition rules.
+ * 
+ * CORE RULES:
+ * - Customers CANNOT manually change status.
+ * - Staff can perform status transitions permitted by their role.
+ * - Admin/Super Admin can override (recorded in audit log).
+ * - Appends audit record to trackingHistory with user ID, role, note, location, timestamp.
  */
-export const getShipmentByTrackingNumber = async (req, res) => {
+export const updateShipmentStatus = async (req, res) => {
     try {
-        // Extract tracking number parameter from URL route
-        const { trackingNumber } = req.params;
+        const { id } = req.params;
+        const { status, location, description, note } = req.body;
 
-        // Search for shipment in MongoDB matching normalized tracking number
-        const shipment = await Shipment.findOne({
-            // Case-insensitive uppercase search
-            trackingNumber: trackingNumber.trim().toUpperCase()
-        })
-            .populate("sender", "name email")
-            .populate("assignedDriver", "name email");
-
-        // Check if matching shipment was found
-        if (!shipment) {
-            // Return HTTP 404 Not Found if tracking number does not exist
-            return res.status(404).json({
-                // Boolean failure indicator
+        // Role authorization check: customers must never manually change status
+        const userRole = (req.user?.role || "GUEST").toUpperCase();
+        if (userRole === "CUSTOMER" || userRole === "CLIENT" || userRole === "USER") {
+            return res.status(403).json({
                 success: false,
-                // Error message
-                message: `No shipment found matching tracking number '${trackingNumber}'.`
+                message: "Forbidden: Customers are not permitted to change shipment status. Status is managed by operations staff."
             });
         }
 
-        // Return HTTP 200 OK status code with shipment tracking information
+        // Normalize status code
+        let normalizedStatus = String(status || "").trim().toUpperCase().replace(/\s+/g, "_");
+        if (normalizedStatus === "TRANSIT") normalizedStatus = "IN_TRANSIT";
+
+        if (!normalizedStatus || !SHIPMENT_STATUSES.includes(normalizedStatus)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status '${status}'. Allowed values: [${SHIPMENT_STATUSES.join(", ")}].`
+            });
+        }
+
+        // Find shipment
+        const filter = id.match(/^[0-9a-fA-F]{24}$/) ? { _id: id } : { trackingNumber: id.toUpperCase() };
+        const shipment = await Shipment.findOne(filter);
+
+        if (!shipment) {
+            return res.status(404).json({
+                success: false,
+                message: `Shipment with identifier '${id}' not found.`
+            });
+        }
+
+        const currentStatus = shipment.currentStatus || "PENDING_VERIFICATION";
+
+        // Check status transition rules
+        const allowedNext = ALLOWED_STATUS_TRANSITIONS[currentStatus] || [];
+        const isTransitionAllowed = allowedNext.includes(normalizedStatus);
+        const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
+
+        if (!isTransitionAllowed && !isAdmin) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid operational transition: Cannot move shipment from '${currentStatus}' to '${normalizedStatus}'. Allowed next stages: [${allowedNext.join(", ")}].`
+            });
+        }
+
+        // Note construction (flags administrative overrides)
+        let auditNote = note || description || `Status updated from ${currentStatus} to ${normalizedStatus}.`;
+        if (!isTransitionAllowed && isAdmin) {
+            auditNote = `[Admin Override] ${auditNote}`;
+        }
+
+        const checkpointLocation = location || shipment.currentLocation || shipment.origin?.city || "Transit Waypoint";
+
+        // Construct history log
+        const newHistoryLog = {
+            status: normalizedStatus,
+            location: checkpointLocation,
+            description: description || `Consignment advanced to ${normalizedStatus.replace(/_/g, ' ')}.`,
+            note: auditNote,
+            timestamp: new Date(),
+            updatedBy: req.user?.id || null,
+            changedByRole: userRole || "STAFF"
+        };
+
+        // Update shipment
+        shipment.currentStatus = normalizedStatus;
+        shipment.shipmentStatus = normalizedStatus;
+        shipment.trackingHistory.push(newHistoryLog);
+
+        await shipment.save();
+
+        const updatedShipment = await Shipment.findById(shipment._id)
+            .populate("sender", "name email")
+            .populate("verifiedBy", "name email")
+            .populate("assignedDriver", "name email");
+
+        // Dispatch status update in-app notification
+        const customerEmail = shipment.senderDetails?.email || shipment.sender?.email;
+        const readableStatus = normalizedStatus.replace(/_/g, ' ');
+
+        await createNotification({
+            recipient: shipment.sender?._id || shipment.sender,
+            recipientEmail: customerEmail,
+            recipientRole: "CUSTOMER",
+            shipment: shipment._id,
+            trackingNumber: shipment.trackingNumber,
+            title: `Shipment Milestone: ${readableStatus}`,
+            message: `Shipment ${shipment.trackingNumber} has reached stage '${readableStatus}' at ${checkpointLocation}.`,
+            type: normalizedStatus === "DELIVERED" ? "DELIVERY" : "STATUS_UPDATE"
+        });
+
         return res.status(200).json({
-            // Boolean success indicator
             success: true,
-            // Shipment document
-            shipment
+            message: `Shipment status updated successfully to ${normalizedStatus}.`,
+            shipment: updatedShipment
         });
     } catch (error) {
-        // Output detailed server error to console
-        console.error("❌ Error in getShipmentByTrackingNumber controller:", error);
-
-        // Return HTTP 500 Internal Server Error response
+        console.error("❌ Error in updateShipmentStatus controller:", error);
         return res.status(500).json({
-            // Boolean failure indicator
             success: false,
-            // Error message
-            message: "Error retrieving shipment tracking details.",
-            // Detailed technical error message
+            message: "Failed to update shipment status.",
             error: error.message
         });
     }
 };
 
 /**
- * Controller: Retrieve all shipments with role-aware scoping.
- * Customers receive only their own shipments; Admin/Dispatcher/Drivers receive all or assigned.
+ * Controller: Retrieve all shipments with strict role-aware scoping and data ownership.
+ * 
+ * CORE REQUIREMENT:
+ * Customer users receive ONLY their own shipments (enforced on the backend).
+ * Staff and Admin receive operational shipments.
  */
 export const getAllShipments = async (req, res) => {
     try {
-        // Initialize query filter object
         let queryFilter = {};
 
-        // Restrict customers to only view shipments where they are the sender
-        if (req.user?.role === "CUSTOMER") {
-            // Match sender ObjectId to authenticated user id
-            queryFilter.sender = req.user.id;
+        // Data ownership isolation for customer users
+        if (req.user?.role === "CUSTOMER" || req.user?.role === "CLIENT" || req.user?.role === "USER") {
+            const userEmail = (req.user.email || "").trim().toLowerCase();
+            const userId = req.user.id;
+
+            queryFilter = {
+                $or: [
+                    { sender: userId },
+                    { createdBy: userId },
+                    { "senderDetails.email": userEmail },
+                    { "receiver.email": userEmail }
+                ]
+            };
         } else if (req.user?.role === "DRIVER") {
-            // Restrict drivers to shipments assigned to them
             queryFilter.assignedDriver = req.user.id;
         }
 
-        // Query shipments collection applying filter and sorting newest first
         const shipments = await Shipment.find(queryFilter)
             .sort({ createdAt: -1 })
             .populate("sender", "name email")
+            .populate("verifiedBy", "name email station department")
             .populate("assignedDriver", "name email");
 
-        // Return HTTP 200 OK status code with array of shipments
         return res.status(200).json({
-            // Boolean success indicator
             success: true,
-            // Total number of matched records
             count: shipments.length,
-            // Array of shipment documents
             shipments
         });
     } catch (error) {
-        // Output detailed server error to console
         console.error("❌ Error in getAllShipments controller:", error);
-
-        // Return HTTP 500 Internal Server Error response
         return res.status(500).json({
-            // Boolean failure indicator
             success: false,
-            // Error message
             message: "Failed to retrieve shipments.",
-            // Detailed technical error message
             error: error.message
         });
     }
@@ -383,56 +661,272 @@ export const getAllShipments = async (req, res) => {
 
 /**
  * Controller: Retrieve single shipment by its MongoDB ObjectId.
+ * 
+ * CORE REQUIREMENT:
+ * Enforces data ownership so Customer A cannot access Customer B's shipment.
  */
 export const getShipmentById = async (req, res) => {
     try {
-        // Extract shipment ID parameter from request URL
         const { id } = req.params;
 
-        // Query shipment by MongoDB ObjectId with populated sender and driver
-        const shipment = await Shipment.findById(id)
+        const filter = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { trackingNumber: id.toUpperCase() };
+        const shipment = await Shipment.findOne(filter)
             .populate("sender", "name email")
+            .populate("verifiedBy", "name email station department")
             .populate("assignedDriver", "name email");
 
-        // Check if shipment exists
         if (!shipment) {
-            // Return HTTP 404 Not Found if record not present
             return res.status(404).json({
-                // Boolean failure indicator
                 success: false,
-                // Error message
-                message: "Shipment not found."
+                message: `Shipment with identifier '${id}' not found.`
             });
         }
 
-        // Return HTTP 200 OK status code with shipment details
+        // Customer data ownership verification
+        if (req.user && (req.user.role === "CUSTOMER" || req.user.role === "CLIENT" || req.user.role === "USER")) {
+            const userEmail = (req.user.email || "").trim().toLowerCase();
+            const userId = String(req.user.id);
+            const senderIdStr = String(shipment.sender?._id || shipment.sender || "");
+            const createdByIdStr = String(shipment.createdBy || "");
+            const senderEmail = (shipment.senderDetails?.email || "").toLowerCase();
+            const receiverEmail = (shipment.receiver?.email || "").toLowerCase();
+
+            const isOwner = (senderIdStr && senderIdStr === userId) 
+                         || (createdByIdStr && createdByIdStr === userId)
+                         || (userEmail && senderEmail === userEmail) 
+                         || (userEmail && receiverEmail === userEmail);
+
+            if (!isOwner) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Forbidden: You are not authorized to view another customer's consignment."
+                });
+            }
+        }
+
         return res.status(200).json({
-            // Boolean success indicator
             success: true,
-            // Shipment document
             shipment
         });
     } catch (error) {
-        // Output detailed server error to console
         console.error("❌ Error in getShipmentById controller:", error);
-
-        // Return HTTP 500 Internal Server Error response
         return res.status(500).json({
-            // Boolean failure indicator
             success: false,
-            // Error message
             message: "Failed to retrieve shipment details.",
-            // Detailed technical error message
             error: error.message
         });
     }
 };
 
-// Export all controller functions as a default object bundle
+/**
+ * Controller: Public tracking endpoint by tracking number.
+ * Publicly searchable for any receiver or shipper tracking progress.
+ */
+export const getShipmentByTrackingNumber = async (req, res) => {
+    try {
+        const { trackingNumber } = req.params;
+
+        const shipment = await Shipment.findOne({
+            trackingNumber: trackingNumber.trim().toUpperCase()
+        })
+            .populate("sender", "name email")
+            .populate("verifiedBy", "name email station department")
+            .populate("assignedDriver", "name email");
+
+        if (!shipment) {
+            return res.status(404).json({
+                success: false,
+                message: `No shipment found matching tracking number '${trackingNumber}'.`
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            shipment
+        });
+    } catch (error) {
+        console.error("❌ Error in getShipmentByTrackingNumber controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Error retrieving shipment tracking details.",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Controller: Admin & Staff Operational Statistics
+ * 
+ * CORE REQUIREMENT:
+ * Aggregates real operational data from MongoDB collections (no hardcoded or fake statistics):
+ * - Users: Total, Customers, Staff, Admins
+ * - Shipments: Total, Today, Yesterday, Monthly, and breakdown by status
+ * - Revenue: Today, Yesterday, Monthly, Total
+ */
+export const getShipmentStats = async (req, res) => {
+    try {
+        // Date boundaries
+        const now = new Date();
+        const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+        const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+        // 1. Parallel user counts across collections
+        const [totalUsers, totalStaff, totalAdmins] = await Promise.all([
+            User.countDocuments({}),
+            Staff.countDocuments({}),
+            Admin.countDocuments({})
+        ]);
+
+        // 2. Shipment counts by timeframe
+        const [
+            totalShipments,
+            todayShipments,
+            yesterdayShipments,
+            monthlyShipments
+        ] = await Promise.all([
+            Shipment.countDocuments({}),
+            Shipment.countDocuments({ createdAt: { $gte: startOfToday } }),
+            Shipment.countDocuments({ createdAt: { $gte: startOfYesterday, $lt: startOfToday } }),
+            Shipment.countDocuments({ createdAt: { $gte: startOfMonth } })
+        ]);
+
+        // 3. Shipment counts grouped by currentStatus
+        const statusAggregation = await Shipment.aggregate([
+            {
+                $group: {
+                    _id: "$currentStatus",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const statusCounts = {
+            PENDING_VERIFICATION: 0,
+            VERIFIED: 0,
+            READY_FOR_DISPATCH: 0,
+            IN_TRANSIT: 0,
+            OUT_FOR_DELIVERY: 0,
+            DELIVERED: 0,
+            CANCELLED: 0,
+            REJECTED: 0,
+            ON_HOLD: 0,
+            DELIVERY_FAILED: 0
+        };
+
+        statusAggregation.forEach(item => {
+            const key = item._id || "PENDING_VERIFICATION";
+            if (key === "ORDER_CREATED") statusCounts.PENDING_VERIFICATION += item.count;
+            else if (key === "PICKED_UP") statusCounts.IN_TRANSIT += item.count;
+            else if (statusCounts[key] !== undefined) statusCounts[key] = item.count;
+            else statusCounts[key] = item.count;
+        });
+
+        // 4. Revenue aggregation from charges.total
+        const [totalRevenueAgg, todayRevenueAgg, yesterdayRevenueAgg, monthlyRevenueAgg] = await Promise.all([
+            Shipment.aggregate([
+                { $group: { _id: null, total: { $sum: "$charges.total" } } }
+            ]),
+            Shipment.aggregate([
+                { $match: { createdAt: { $gte: startOfToday } } },
+                { $group: { _id: null, total: { $sum: "$charges.total" } } }
+            ]),
+            Shipment.aggregate([
+                { $match: { createdAt: { $gte: startOfYesterday, $lt: startOfToday } } },
+                { $group: { _id: null, total: { $sum: "$charges.total" } } }
+            ]),
+            Shipment.aggregate([
+                { $match: { createdAt: { $gte: startOfMonth } } },
+                { $group: { _id: null, total: { $sum: "$charges.total" } } }
+            ])
+        ]);
+
+        const revenue = {
+            total: totalRevenueAgg[0]?.total || 0,
+            today: todayRevenueAgg[0]?.total || 0,
+            yesterday: yesterdayRevenueAgg[0]?.total || 0,
+            monthly: monthlyRevenueAgg[0]?.total || 0
+        };
+
+        return res.status(200).json({
+            success: true,
+            timestamp: new Date().toISOString(),
+            users: {
+                total: totalUsers + totalStaff + totalAdmins,
+                customers: totalUsers,
+                staff: totalStaff,
+                admins: totalAdmins
+            },
+            shipments: {
+                total: totalShipments,
+                today: todayShipments,
+                yesterday: yesterdayShipments,
+                monthly: monthlyShipments,
+                byStatus: statusCounts
+            },
+            revenue
+        });
+    } catch (error) {
+        console.error("❌ Error in getShipmentStats controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to compile operational statistics.",
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Controller: Delete a shipment by MongoDB ObjectId or unique trackingNumber.
+ */
+export const deleteShipment = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Only staff or admin may delete
+        const userRole = (req.user?.role || "").toUpperCase();
+        if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Only Executive Administrators can delete consignments."
+            });
+        }
+
+        const filter = mongoose.Types.ObjectId.isValid(id)
+            ? { _id: id }
+            : { trackingNumber: id.trim().toUpperCase() };
+
+        const deleted = await Shipment.findOneAndDelete(filter);
+        if (!deleted) {
+            return res.status(404).json({
+                success: false,
+                message: `Shipment with identifier '${id}' not found.`
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Shipment deleted successfully from MongoDB.",
+            trackingNumber: deleted.trackingNumber
+        });
+    } catch (error) {
+        console.error("❌ Error in deleteShipment controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete shipment from MongoDB.",
+            error: error.message
+        });
+    }
+};
+
 export default {
     createShipment,
+    verifyShipment,
     updateShipmentStatus,
     getShipmentByTrackingNumber,
     getAllShipments,
-    getShipmentById
+    getShipmentById,
+    getShipmentStats,
+    deleteShipment,
+    generateTrackingNumber
 };
