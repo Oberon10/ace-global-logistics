@@ -679,7 +679,8 @@ export default function CustomerDashboardView({
                 { id: 'VERIFIED', label: 'VERIFIED' },
                 { id: 'IN TRANSIT', label: 'IN TRANSIT' },
                 { id: 'OUT_FOR_DELIVERY', label: 'OUT FOR DELIVERY' },
-                { id: 'DELIVERED', label: 'DELIVERED' }
+                { id: 'DELIVERED', label: 'DELIVERED' },
+                { id: 'CANCELLED', label: 'CANCELLED' }
               ].map(tab => (
                 <button
                   key={tab.id}

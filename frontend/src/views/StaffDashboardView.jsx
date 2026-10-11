@@ -21,7 +21,10 @@ import {
   Check,
   ShieldAlert,
   Send,
-  Eye
+  Eye,
+  XCircle,
+  AlertOctagon,
+  AlertTriangle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateTrackingNumber } from '../data/shipments';
@@ -41,6 +44,7 @@ export default function StaffDashboardView({
   const updateStatusHandler = onUpdateShipmentStatus || app.handleUpdateShipmentStatus;
   const createShipmentHandler = onCreateShipment || app.handleShipmentCreated;
   const selectShipmentHandler = onSelectShipment || app.handleSelectShipment;
+  const cancelHandler = app.handleCancelShipment;
 
   // Selected shipment for operations
   const [selectedTracking, setSelectedTracking] = useState(shipments[0]?.trackingNumber || '');
@@ -55,6 +59,57 @@ export default function StaffDashboardView({
   const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [confirmModalData, setConfirmModalData] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Cancellation Modal State
+  const [cancelModalShipment, setCancelModalShipment] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelNotice, setCancelNotice] = useState({ type: '', text: '' });
+
+  const handleOpenCancelModal = (shipment) => {
+    setCancelModalShipment(shipment);
+    setCancelReason('');
+    setCancelNotice({ type: '', text: '' });
+  };
+
+  const handleExecuteCancellation = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!cancelModalShipment) return;
+    if (!cancelReason || cancelReason.trim().length < 5) {
+      setCancelNotice({ type: 'error', text: 'Please provide a valid cancellation reason of at least 5 characters.' });
+      return;
+    }
+
+    setIsCancelling(true);
+    setCancelNotice({ type: '', text: '' });
+    try {
+      if (cancelHandler) {
+        const res = await cancelHandler(
+          cancelModalShipment.id || cancelModalShipment.trackingNumber,
+          cancelReason.trim(),
+          cancelModalShipment.currentLocation || ''
+        );
+        if (res?.success) {
+          setCancelNotice({ type: 'success', text: `Consignment ${cancelModalShipment.trackingNumber} cancelled successfully.` });
+          setSuccessMessage(`Consignment ${cancelModalShipment.trackingNumber} cancelled successfully.`);
+          setTimeout(() => {
+            setCancelModalShipment(null);
+            setCancelReason('');
+            setCancelNotice({ type: '', text: '' });
+          }, 1200);
+        } else {
+          setCancelNotice({ type: 'error', text: res?.message || 'Failed to cancel shipment.' });
+          setErrorMessage(res?.message || 'Failed to cancel shipment.');
+        }
+      } else {
+        setCancelNotice({ type: 'error', text: 'Cancellation service not available.' });
+      }
+    } catch (err) {
+      setCancelNotice({ type: 'error', text: 'Network error: ' + err.message });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   // Verification Form State
   const [verifyForm, setVerifyForm] = useState({
@@ -677,61 +732,84 @@ export default function StaffDashboardView({
                     )}
 
                     {/* 7. Exception status */}
-                    {['REJECTED', 'CANCELLED', 'ON_HOLD', 'DELIVERY_FAILED', 'RETURNED'].includes(activeShipment.status) && (
+                    {getStatusKey(activeShipment) === 'CANCELLED' ? (
+                      <div style={{
+                        backgroundColor: '#FEF2F2',
+                        border: '1.5px solid #FECACA',
+                        borderRadius: '8px',
+                        padding: '14px 16px',
+                        marginTop: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontWeight: 800, fontSize: '14px', marginBottom: '6px' }}>
+                          <XCircle size={18} color="#DC2626" />
+                          <span>CONSIGNMENT CANCELLED</span>
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#7F1D1D', marginBottom: '8px' }}>
+                          <strong>Reason:</strong> {activeShipment.cancellationReason || 'Operational cancellation logged.'}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: '#991B1B', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                          {activeShipment.cancelledByName && <span>Authorized by: <strong>{activeShipment.cancelledByName}</strong> ({activeShipment.cancelledByRole || 'Staff'})</span>}
+                          {activeShipment.cancelledAt && <span>Timestamp: <strong>{new Date(activeShipment.cancelledAt).toLocaleString()}</strong></span>}
+                        </div>
+                      </div>
+                    ) : ['REJECTED', 'ON_HOLD', 'DELIVERY_FAILED', 'RETURNED'].includes(activeShipment.status) ? (
                       <div style={{ color: '#991B1B', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '14px' }}>
                         <ShieldAlert size={18} color="#EF4444" />
                         <span>Shipment in exception state: {activeShipment.status}.</span>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Manual Location / Note Override Section */}
-                  <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
-                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px' }}>
-                      Optional Waypoint / Event Log Notes
-                    </div>
+                  {getStatusKey(activeShipment) !== 'CANCELLED' && getStatusKey(activeShipment) !== 'DELIVERED' && (
+                    <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '16px' }}>
+                      <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                        Optional Waypoint / Event Log Notes
+                      </div>
 
-                    <div className="ace-form-group" style={{ marginBottom: '10px' }}>
-                      <input
-                        type="text"
-                        className="ace-input"
-                        placeholder={activeShipment.currentLocation || "Waypoint Location (e.g. Accra Air Cargo Bay 3)"}
-                        value={actionLocation}
-                        onChange={(e) => setActionLocation(e.target.value)}
-                      />
-                    </div>
+                      <div className="ace-form-group" style={{ marginBottom: '10px' }}>
+                        <input
+                          type="text"
+                          className="ace-input"
+                          placeholder={activeShipment.currentLocation || "Waypoint Location (e.g. Accra Air Cargo Bay 3)"}
+                          value={actionLocation}
+                          onChange={(e) => setActionLocation(e.target.value)}
+                        />
+                      </div>
 
-                    <div className="ace-form-group" style={{ marginBottom: '14px' }}>
-                      <input
-                        type="text"
-                        className="ace-input"
-                        placeholder="Dispatcher notes (e.g. Cleared security screening)"
-                        value={actionNote}
-                        onChange={(e) => setActionNote(e.target.value)}
-                      />
-                    </div>
+                      <div className="ace-form-group" style={{ marginBottom: '14px' }}>
+                        <input
+                          type="text"
+                          className="ace-input"
+                          placeholder="Dispatcher notes (e.g. Cleared security screening)"
+                          value={actionNote}
+                          onChange={(e) => setActionNote(e.target.value)}
+                        />
+                      </div>
 
-                    {/* Exception Actions */}
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleTransition('ON_HOLD', activeShipment.currentLocation, actionNote || 'Shipment placed on operational hold.')}
-                        className="ace-btn ace-btn-ghost ace-btn-sm"
-                        style={{ color: '#D97706', fontSize: '12px' }}
-                      >
-                        Place on Hold
-                      </button>
+                      {/* Exception Actions */}
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleTransition('ON_HOLD', activeShipment.currentLocation, actionNote || 'Shipment placed on operational hold.')}
+                          className="ace-btn ace-btn-ghost ace-btn-sm"
+                          style={{ color: '#D97706', fontSize: '12px' }}
+                        >
+                          Place on Hold
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleTransition('CANCELLED', activeShipment.currentLocation, actionNote || 'Shipment voided by station dispatcher.')}
-                        className="ace-btn ace-btn-ghost ace-btn-sm"
-                        style={{ color: '#DC2626', fontSize: '12px' }}
-                      >
-                        Void / Cancel
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCancelModal(activeShipment)}
+                          className="ace-btn ace-btn-ghost ace-btn-sm"
+                          style={{ color: '#DC2626', borderColor: '#FECACA', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <XCircle size={13} />
+                          <span>Cancel Shipment</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -964,7 +1042,23 @@ export default function StaffDashboardView({
                               <Check size={13} /> Completed
                             </span>
                           )}
-                          {!isPending && !isInTransit && !isOutForDelivery && !isDelivered && (
+                          {st === 'CANCELLED' && (
+                            <span style={{ fontSize: '11.5px', color: '#DC2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <XCircle size={13} /> Cancelled
+                            </span>
+                          )}
+                          {st !== 'DELIVERED' && st !== 'CANCELLED' && st !== 'RETURNED' && (
+                            <button
+                              onClick={() => handleOpenCancelModal(s)}
+                              className="ace-btn ace-btn-ghost ace-btn-sm"
+                              style={{ fontSize: '11.5px', padding: '4px 8px', color: '#DC2626', borderColor: '#FECACA' }}
+                              title="Cancel consignment"
+                            >
+                              <XCircle size={12} />
+                              <span>Cancel</span>
+                            </button>
+                          )}
+                          {!isPending && !isInTransit && !isOutForDelivery && !isDelivered && st !== 'CANCELLED' && (
                             <button
                               onClick={() => setSelectedTracking(s.trackingNumber)}
                               className="ace-btn ace-btn-ghost ace-btn-sm"
@@ -1373,6 +1467,176 @@ export default function StaffDashboardView({
                   <span>{isSubmitting ? 'Updating Database...' : confirmModalData.confirmBtnText}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 3: CANCELLATION CONFIRMATION MODAL (STAFF OPERATIONS) */}
+        {cancelModalShipment && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(3, 11, 22, 0.72)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px'
+          }}>
+            <div className="ace-card" style={{
+              width: '100%',
+              maxWidth: '520px',
+              backgroundColor: 'var(--color-surface)',
+              borderRadius: '14px',
+              padding: '24px 28px',
+              boxShadow: '0 24px 60px rgba(0, 0, 0, 0.4)',
+              border: '1.5px solid #F87171',
+              position: 'relative'
+            }}>
+              {/* Modal Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#FEE2E2', color: '#991B1B', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <AlertOctagon size={13} color="#DC2626" />
+                    <span>Station Cancellation Protocol</span>
+                  </div>
+                  <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--color-primary-blue)', margin: '8px 0 2px' }}>
+                    Cancel Consignment
+                  </h3>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Waybill Reference: <strong style={{ fontFamily: 'monospace', color: 'var(--color-primary-blue)' }}>{cancelModalShipment.trackingNumber}</strong>
+                  </div>
+                </div>
+                <button
+                  onClick={() => !isCancelling && setCancelModalShipment(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                  title="Close modal"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Warning Callout Box */}
+              <div style={{
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '18px',
+                display: 'flex',
+                gap: '10px',
+                fontSize: '12.5px',
+                color: '#991B1B',
+                lineHeight: 1.45
+              }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#DC2626' }} />
+                <div>
+                  <strong>Operational Warning:</strong> Cancelling will halt further station processing and mark this shipment as <strong>CANCELLED</strong> in Atlas. The customer will receive an alert and the tracking timeline will freeze.
+                </div>
+              </div>
+
+              {/* Shipment Snapshot Details */}
+              <div style={{
+                backgroundColor: 'var(--color-very-light-blue)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '18px',
+                fontSize: '12.5px',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '8px'
+              }}>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>SHIPPER / SENDER</span>
+                  <strong>{cancelModalShipment.sender?.name || 'Customer'}</strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>CURRENT STATUS</span>
+                  <StatusBadge status={cancelModalShipment.status} />
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>ROUTING</span>
+                  <span>{cancelModalShipment.origin} → {cancelModalShipment.destination}</span>
+                </div>
+              </div>
+
+              {/* Feedback Notice */}
+              {cancelNotice.text && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  marginBottom: '14px',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  backgroundColor: cancelNotice.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+                  color: cancelNotice.type === 'success' ? '#065F46' : '#991B1B',
+                  border: cancelNotice.type === 'success' ? '1px solid #A7F3D0' : '1px solid #FECACA'
+                }}>
+                  {cancelNotice.text}
+                </div>
+              )}
+
+              {/* Cancellation Form */}
+              <form onSubmit={handleExecuteCancellation}>
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700, color: 'var(--color-primary-blue)', marginBottom: '6px' }}>
+                    <span>Operational Cancellation Reason <span style={{ color: '#DC2626' }}>*</span></span>
+                    <span style={{ color: cancelReason.trim().length >= 5 ? '#059669' : 'var(--text-muted)', fontWeight: 500 }}>
+                      {cancelReason.trim().length} chars (min 5)
+                    </span>
+                  </label>
+                  <textarea
+                    className="ace-input"
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                      backgroundColor: 'var(--color-white)',
+                      borderColor: cancelNotice.type === 'error' ? '#EF4444' : undefined
+                    }}
+                    placeholder="Enter station operational reason (e.g., Damaged prior to loading, Shipper recalled shipment, Prohibited hazardous materials identified)..."
+                    value={cancelReason}
+                    onChange={(e) => {
+                      setCancelReason(e.target.value);
+                      if (cancelNotice.text) setCancelNotice({ type: '', text: '' });
+                    }}
+                    disabled={isCancelling}
+                    required
+                  />
+                </div>
+
+                {/* Modal Buttons */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCancelModalShipment(null)}
+                    disabled={isCancelling}
+                    className="ace-btn ace-btn-secondary"
+                  >
+                    Keep Shipment Active
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCancelling || cancelReason.trim().length < 5}
+                    className="ace-btn"
+                    style={{
+                      backgroundColor: '#DC2626',
+                      color: '#FFFFFF',
+                      fontWeight: 700,
+                      opacity: (isCancelling || cancelReason.trim().length < 5) ? 0.6 : 1,
+                      cursor: (isCancelling || cancelReason.trim().length < 5) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <XCircle size={15} />
+                    <span>{isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -6,6 +6,7 @@ import {
     createShipment,
     verifyShipment,
     updateShipmentStatus,
+    cancelShipment,
     getShipmentByTrackingNumber,
     getAllShipments,
     getShipmentById,
@@ -71,6 +72,17 @@ router.patch(
     "/:id/status",
     optionalAuthenticateToken,
     updateShipmentStatus
+);
+
+/**
+ * @route   PATCH /api/shipments/:id/cancel
+ * @desc    Admin or authorized Staff cancels an eligible shipment with required reason
+ * @access  Authenticated (Staff / Admin)
+ */
+router.patch(
+    "/:id/cancel",
+    authenticateToken,
+    cancelShipment
 );
 
 /**

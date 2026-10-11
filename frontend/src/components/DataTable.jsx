@@ -11,13 +11,15 @@ import {
   Ship, 
   Train,
   ArrowRight,
-  User
+  User,
+  XCircle
 } from 'lucide-react';
 
 export default function DataTable({ 
   shipments = [], 
   onSelectShipment, 
   onViewReceipt,
+  onCancelShipment,
   emptyMessage = "No shipments found matching the selected criteria." 
 }) {
   if (!shipments || shipments.length === 0) {
@@ -130,6 +132,23 @@ export default function DataTable({
                       <FileText size={13} />
                       <span>Receipt</span>
                     </button>
+
+                    {onCancelShipment && (() => {
+                      const st = (s.statusRaw || s.status || '').toUpperCase().trim().replace(/\s+/g, '_');
+                      const isCancellable = st !== 'CANCELLED' && st !== 'DELIVERED' && st !== 'RETURNED';
+                      if (!isCancellable) return null;
+                      return (
+                        <button
+                          onClick={() => onCancelShipment(s)}
+                          className="ace-btn ace-btn-ghost ace-btn-sm"
+                          style={{ color: '#DC2626', borderColor: '#FECACA' }}
+                          title="Cancel Consignment"
+                        >
+                          <XCircle size={13} />
+                          <span>Cancel</span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </td>
               </tr>
@@ -236,6 +255,22 @@ export default function DataTable({
                   <FileText size={14} />
                   <span>Receipt</span>
                 </button>
+
+                {onCancelShipment && (() => {
+                  const st = (s.statusRaw || s.status || '').toUpperCase().trim().replace(/\s+/g, '_');
+                  const isCancellable = st !== 'CANCELLED' && st !== 'DELIVERED' && st !== 'RETURNED';
+                  if (!isCancellable) return null;
+                  return (
+                    <button
+                      onClick={() => onCancelShipment(s)}
+                      className="ace-btn ace-btn-ghost ace-btn-sm"
+                      style={{ gridColumn: 'span 2', width: '100%', justifyContent: 'center', height: '36px', fontSize: '12px', color: '#DC2626', borderColor: '#FECACA' }}
+                    >
+                      <XCircle size={14} />
+                      <span>Cancel Consignment</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           );

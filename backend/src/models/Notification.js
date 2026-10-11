@@ -62,6 +62,8 @@ const notificationSchema = new mongoose.Schema(
                 "DISPATCH",
                 "DELIVERY",
                 "EXCEPTION",
+                "CANCELLATION",
+                "SHIPMENT_CANCELLED",
                 "SYSTEM"
             ],
             default: "STATUS_UPDATE"

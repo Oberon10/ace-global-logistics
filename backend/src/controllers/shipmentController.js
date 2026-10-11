@@ -18,15 +18,16 @@ const ALLOWED_STATUS_TRANSITIONS = {
     "PENDING_VERIFICATION": ["IN_TRANSIT", "VERIFIED", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
     "VERIFIED": ["IN_TRANSIT", "OUT_FOR_DELIVERY", "READY_FOR_DISPATCH", "ON_HOLD", "CANCELLED"],
     "READY_FOR_DISPATCH": ["IN_TRANSIT", "OUT_FOR_DELIVERY", "ON_HOLD", "CANCELLED"],
-    "IN_TRANSIT": ["OUT_FOR_DELIVERY", "DELIVERED", "ON_HOLD", "DELIVERY_FAILED", "RETURNED"],
-    "OUT_FOR_DELIVERY": ["DELIVERED", "DELIVERY_FAILED", "RETURNED", "ON_HOLD"],
-    "DELIVERY_FAILED": ["OUT_FOR_DELIVERY", "RETURNED", "ON_HOLD", "DELIVERED"],
+    "IN_TRANSIT": ["OUT_FOR_DELIVERY", "DELIVERED", "ON_HOLD", "DELIVERY_FAILED", "RETURNED", "CANCELLED"],
+    "OUT_FOR_DELIVERY": ["DELIVERED", "DELIVERY_FAILED", "RETURNED", "ON_HOLD", "CANCELLED"],
+    "DELIVERY_FAILED": ["OUT_FOR_DELIVERY", "RETURNED", "ON_HOLD", "DELIVERED", "CANCELLED"],
     "ON_HOLD": ["PENDING", "PENDING_INTAKE", "PENDING_VERIFICATION", "VERIFIED", "READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "CANCELLED"],
     // Backward compatibility mappings for legacy data
     "ORDER_CREATED": ["PENDING", "PENDING_INTAKE", "PENDING_VERIFICATION", "VERIFIED", "PICKED_UP", "IN_TRANSIT", "CANCELLED"],
-    "PICKED_UP": ["IN_TRANSIT", "READY_FOR_DISPATCH", "ON_HOLD"],
-    "RETURNED": ["ON_HOLD", "DELIVERED"],
-    "DELIVERED": []
+    "PICKED_UP": ["IN_TRANSIT", "READY_FOR_DISPATCH", "ON_HOLD", "CANCELLED"],
+    "RETURNED": ["ON_HOLD"],
+    "DELIVERED": [],
+    "CANCELLED": []
 };
 
 /**
@@ -422,6 +423,13 @@ export const verifyShipment = async (req, res) => {
             });
         }
 
+        if (shipment.currentStatus === "CANCELLED") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid action: Cancelled shipments cannot be verified."
+            });
+        }
+
         const isRejection = decision.toUpperCase() === "REJECT";
         const newStatus = isRejection ? "REJECTED" : "VERIFIED";
 
@@ -580,6 +588,13 @@ export const updateShipmentStatus = async (req, res) => {
         }
 
         const currentStatus = shipment.currentStatus || "PENDING_VERIFICATION";
+
+        if (currentStatus === "CANCELLED") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid operational transition: Cancelled shipments cannot proceed through normal shipment-status transitions."
+            });
+        }
 
         // Check status transition rules
         const allowedNext = ALLOWED_STATUS_TRANSITIONS[currentStatus] || [];
@@ -991,10 +1006,202 @@ export const deleteShipment = async (req, res) => {
     }
 };
 
+/**
+ * Controller: Cancel a shipment (Admin and Staff privileges).
+ * PATCH /api/shipments/:id/cancel
+ * 
+ * Rules:
+ * - Requires authenticated Staff or Admin.
+ * - Rejects Customers with 403 Forbidden.
+ * - Rejects inactive or suspended staff members.
+ * - Requires non-empty cancellation reason (min 5 characters).
+ * - Rejects if shipment is already CANCELLED (400 Bad Request).
+ * - Rejects if shipment is DELIVERED or RETURNED (400 Bad Request).
+ * - Performs atomic status update and audit trail logging in trackingHistory.
+ * - Persists cancelledBy, cancelledByRole, cancelledByName, cancelledAt, cancellationReason.
+ * - Dispatches customer in-app notification if customer email or ID exists.
+ */
+export const cancelShipment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason, location } = req.body;
+
+        // 1. Role authentication check
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized: Authentication required to cancel shipments."
+            });
+        }
+
+        const userRole = (req.user.role || "").toUpperCase();
+        const userType = (req.user.userType || "").toUpperCase();
+
+        if (userRole === "CUSTOMER" || userRole === "CLIENT" || userRole === "USER" || userType === "CUSTOMER") {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Customers are not permitted to use administrative shipment cancellation. Please contact operations support."
+            });
+        }
+
+        const allowedRoles = [
+            "STAFF", "DISPATCHER", "OPERATOR", "WAREHOUSE_OPERATOR", 
+            "CUSTOMS_OFFICER", "TERMINAL_DISPATCHER", "ADMIN", "SUPER_ADMIN", "SYSTEM_ADMIN"
+        ];
+        const isAuthorized = allowedRoles.includes(userRole) || userType === "STAFF" || userType === "ADMIN";
+
+        if (!isAuthorized) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Insufficient privileges to cancel shipments."
+            });
+        }
+
+        // Check if staff member's account is active
+        if (userType === "STAFF" || allowedRoles.slice(0, 6).includes(userRole)) {
+            const staffRecord = await Staff.findById(req.user.id);
+            if (staffRecord && staffRecord.status && staffRecord.status.toUpperCase() !== "ACTIVE") {
+                return res.status(403).json({
+                    success: false,
+                    message: "Forbidden: Your staff account is currently inactive or suspended. Cannot perform cancellations."
+                });
+            }
+        }
+
+        // 2. Validate cancellation reason
+        const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+        if (!trimmedReason || trimmedReason.length < 5) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide a valid cancellation reason of at least 5 characters explaining why the shipment is being cancelled."
+            });
+        }
+
+        // 3. Locate shipment
+        const filter = mongoose.Types.ObjectId.isValid(id)
+            ? { _id: id }
+            : { trackingNumber: id.trim().toUpperCase() };
+
+        const shipment = await Shipment.findOne(filter);
+        if (!shipment) {
+            return res.status(404).json({
+                success: false,
+                message: `Shipment with identifier '${id}' not found.`
+            });
+        }
+
+        // 4. Validate current status and cancellation eligibility
+        const currentStatus = (shipment.currentStatus || shipment.shipmentStatus || "PENDING").toUpperCase();
+
+        if (currentStatus === "CANCELLED") {
+            return res.status(400).json({
+                success: false,
+                message: `Shipment '${shipment.trackingNumber}' is already cancelled.`,
+                cancelledAt: shipment.cancelledAt,
+                cancellationReason: shipment.cancellationReason
+            });
+        }
+
+        if (currentStatus === "DELIVERED") {
+            return res.status(400).json({
+                success: false,
+                message: `Delivered shipments cannot be cancelled as delivery has been completed and confirmed.`
+            });
+        }
+
+        if (currentStatus === "RETURNED") {
+            return res.status(400).json({
+                success: false,
+                message: `Returned shipments cannot be cancelled.`
+            });
+        }
+
+        // 5. Atomic status update with concurrency protection
+        const actorId = req.user.id || req.user._id || null;
+        const actorRole = userRole || "STAFF";
+        const actorName = req.user.name || (userRole.includes("ADMIN") ? "Executive Administrator" : "Operations Dispatcher");
+        const checkpointLocation = location || shipment.currentLocation || shipment.origin?.city || "Operations Command Hub";
+        const now = new Date();
+
+        const auditEntry = {
+            status: "CANCELLED",
+            previousStatus: currentStatus,
+            action: `${currentStatus} → CANCELLED`,
+            location: checkpointLocation,
+            description: `Shipment cancelled by ${actorRole}: ${trimmedReason}`,
+            note: trimmedReason,
+            changedByRole: actorRole,
+            timestamp: now,
+            updatedBy: actorId
+        };
+
+        const updatedShipment = await Shipment.findOneAndUpdate(
+            {
+                _id: shipment._id,
+                currentStatus: { $nin: ["CANCELLED", "DELIVERED", "RETURNED"] }
+            },
+            {
+                $set: {
+                    currentStatus: "CANCELLED",
+                    shipmentStatus: "CANCELLED",
+                    cancelledBy: actorId,
+                    cancelledByRole: actorRole,
+                    cancelledByName: actorName,
+                    cancelledAt: now,
+                    cancellationReason: trimmedReason
+                },
+                $push: {
+                    trackingHistory: auditEntry
+                }
+            },
+            { new: true }
+        )
+        .populate("sender", "name email")
+        .populate("verifiedBy", "name email")
+        .populate("assignedDriver", "name email");
+
+        if (!updatedShipment) {
+            return res.status(409).json({
+                success: false,
+                message: "Shipment could not be cancelled due to a concurrent status update. Please refresh and check the shipment status."
+            });
+        }
+
+        // 6. Customer in-app notification
+        const customerEmail = updatedShipment.senderDetails?.email || updatedShipment.sender?.email;
+        if (customerEmail || updatedShipment.sender) {
+            await createNotification({
+                recipient: updatedShipment.sender?._id || updatedShipment.sender || null,
+                recipientEmail: customerEmail,
+                recipientRole: "CUSTOMER",
+                shipment: updatedShipment._id,
+                trackingNumber: updatedShipment.trackingNumber,
+                title: "Consignment Cancelled",
+                message: `Consignment ${updatedShipment.trackingNumber} has been cancelled by operations. Reason: ${trimmedReason}`,
+                type: "CANCELLATION"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `Shipment ${updatedShipment.trackingNumber} has been successfully cancelled.`,
+            shipment: updatedShipment
+        });
+    } catch (error) {
+        console.error("❌ Error in cancelShipment controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to cancel shipment.",
+            error: error.message
+        });
+    }
+};
+
 export default {
     createShipment,
     verifyShipment,
     updateShipmentStatus,
+    cancelShipment,
     getShipmentByTrackingNumber,
     getAllShipments,
     getShipmentById,

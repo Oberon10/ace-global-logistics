@@ -129,6 +129,7 @@ export const mapShipmentDoc = (b) => {
                         rawH === 'DELIVERED' ? 'Shipment Delivered' :
                         rawH === 'ON_HOLD' ? 'Shipment On Hold' :
                         rawH === 'REJECTED' ? 'Shipment Rejected' :
+                        rawH === 'CANCELLED' ? 'Shipment Cancelled' :
                         rawH.replace(/_/g, ' ');
 
           return {
@@ -145,7 +146,12 @@ export const mapShipmentDoc = (b) => {
             updatedBy: h.updatedBy
           };
         })
-      : []
+      : [],
+    cancelledBy: b.cancelledBy || null,
+    cancelledByRole: b.cancelledByRole || '',
+    cancelledByName: b.cancelledByName || '',
+    cancelledAt: b.cancelledAt ? new Date(b.cancelledAt) : null,
+    cancellationReason: b.cancellationReason || ''
   };
 };
 
@@ -624,6 +630,49 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Shipment Cancellation (Staff & Admin, Persisted to MongoDB Atlas)
+  const handleCancelShipment = async (shipmentId, reason, location = '') => {
+    try {
+      const backendUrl = `${getApiBase()}/api/shipments/${encodeURIComponent(shipmentId)}/cancel`;
+      
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(backendUrl, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          reason: String(reason || '').trim(),
+          location: location || ''
+        })
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        const errorMsg = data?.message || 'Failed to cancel shipment in MongoDB Atlas.';
+        return { success: false, message: errorMsg };
+      }
+
+      if (data?.shipment) {
+        const updatedMapped = mapShipmentDoc(data.shipment);
+        setShipments(prev => prev.map(s => (s.id === shipmentId || s.trackingNumber === shipmentId) ? updatedMapped : s));
+        if (selectedShipment?.id === shipmentId || selectedShipment?.trackingNumber === shipmentId) {
+          setSelectedShipment(updatedMapped);
+        }
+        fetchNotifications();
+        fetchAdminStats();
+        return { success: true, message: data.message, shipment: updatedMapped };
+      }
+
+      return { success: true, message: data?.message || 'Shipment cancelled successfully.' };
+    } catch (err) {
+      console.error('Backend MongoDB shipment cancel error:', err);
+      return { success: false, message: 'Failed to connect to backend database to cancel shipment: ' + err.message };
+    }
+  };
+
   // Quote -> Shipment Booking Transition
   const handleProceedToShipmentFromQuote = (quoteData) => {
     setPrefilledQuote(quoteData);
@@ -757,6 +806,7 @@ export function AppProvider({ children }) {
     handleShipmentCreated,
     handleVerifyShipment,
     handleUpdateShipmentStatus,
+    handleCancelShipment,
     fetchLiveShipments,
 
     // Notifications

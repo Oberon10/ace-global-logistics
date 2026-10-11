@@ -297,6 +297,28 @@ const shipmentSchema = new mongoose.Schema(
             type: String,
             default: ""
         },
+        // Cancellation metadata recorded when Admin or Staff cancels shipment
+        cancelledBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+        cancelledByRole: {
+            type: String,
+            default: ""
+        },
+        cancelledByName: {
+            type: String,
+            default: ""
+        },
+        cancelledAt: {
+            type: Date,
+            default: null
+        },
+        cancellationReason: {
+            type: String,
+            default: ""
+        },
         // Array of chronological tracking history logs updated via $push operations
         trackingHistory: {
             type: [trackingHistorySchema],

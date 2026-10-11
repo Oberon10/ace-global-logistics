@@ -26,7 +26,10 @@ import {
   CheckCircle2,
   HelpCircle,
   Radio,
-  X
+  X,
+  XCircle,
+  AlertOctagon,
+  AlertTriangle
 } from 'lucide-react';
 
 // Determine Transport Icon based on shipping method
@@ -111,12 +114,60 @@ export default function TrackingView({
   // Calculate Milestone Progress Stepper (6-stage operational lifecycle)
   const getMilestoneSteps = () => {
     const rawStatus = (shipment?.status || 'PENDING').toUpperCase().trim().replace(/\s+/g, '_');
+    const isCancelled = rawStatus === 'CANCELLED';
     const isDelivered = rawStatus === 'DELIVERED';
     const isOutForDelivery = rawStatus === 'OUT_FOR_DELIVERY';
     const isInTransit = rawStatus === 'IN_TRANSIT';
     const isReadyForDispatch = rawStatus === 'READY_FOR_DISPATCH';
     const isVerified = rawStatus === 'VERIFIED';
     const isPending = rawStatus === 'PENDING' || rawStatus === 'PENDING_INTAKE' || rawStatus === 'PENDING_VERIFICATION' || rawStatus === 'ORDER_CREATED';
+
+    if (isCancelled) {
+      return [
+        {
+          id: 1,
+          name: 'Shipment Request Created',
+          location: shipment?.origin || 'Origin Terminal',
+          status: 'completed',
+          date: shipment?.createdDate || 'Booking Confirmed'
+        },
+        {
+          id: 2,
+          name: 'Intake & Inspection',
+          location: 'Station Intake',
+          status: shipment?.verifiedAt ? 'completed' : 'cancelled',
+          date: shipment?.verifiedAt ? new Date(shipment.verifiedAt).toLocaleDateString() : 'Intake Discontinued'
+        },
+        {
+          id: 3,
+          name: 'Dispatch Staging',
+          location: 'Manifest Staging',
+          status: 'cancelled',
+          date: 'Staging Cancelled'
+        },
+        {
+          id: 4,
+          name: 'Linehaul Transit',
+          location: 'Transit Corridors',
+          status: 'cancelled',
+          date: 'Transit Terminated'
+        },
+        {
+          id: 5,
+          name: 'Final Delivery Run',
+          location: shipment?.receiver?.city || 'Destination Depot',
+          status: 'cancelled',
+          date: 'Route Halted'
+        },
+        {
+          id: 6,
+          name: 'Shipment Cancelled',
+          location: shipment?.currentLocation || 'Operations Control',
+          status: 'cancelled',
+          date: shipment?.cancelledAt ? new Date(shipment.cancelledAt).toLocaleDateString() : 'Cancelled'
+        }
+      ];
+    }
 
     // Step 1: Shipment Created
     const s1Status = 'completed';
@@ -144,14 +195,14 @@ export default function TrackingView({
         name: 'Package Verified',
         location: 'Intake Station',
         status: s2Status,
-        date: isPendingVerification ? 'Awaiting Scale & Intake' : (shipment?.verifiedAt ? new Date(shipment.verifiedAt).toLocaleDateString() : 'Verified & Certified')
+        date: isPending ? 'Awaiting Scale & Intake' : (shipment?.verifiedAt ? new Date(shipment.verifiedAt).toLocaleDateString() : 'Verified & Certified')
       },
       {
         id: 3,
         name: 'Ready for Dispatch',
         location: shipment?.origin ? `${shipment.origin.split(',')[0]} Hub` : 'Staging Bay',
         status: s3Status,
-        date: (isPendingVerification || isVerified) ? 'Pending Staging' : 'Manifest Staged'
+        date: (isPending || isVerified) ? 'Pending Staging' : 'Manifest Staged'
       },
       {
         id: 4,
@@ -520,6 +571,50 @@ export default function TrackingView({
               </div>
             </div>
 
+            {/* Prominent Cancellation Alert Banner */}
+            {shipment.status === 'CANCELLED' && (
+              <div style={{
+                backgroundColor: '#FEF2F2',
+                border: '1.5px solid #F87171',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '14px',
+                boxShadow: '0 4px 14px rgba(239, 68, 68, 0.1)'
+              }}>
+                <AlertOctagon size={24} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#991B1B', margin: 0 }}>
+                      CONSIGNMENT CANCELLED
+                    </h3>
+                    <span style={{
+                      backgroundColor: '#FEE2E2',
+                      color: '#991B1B',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      textTransform: 'uppercase'
+                    }}>
+                      Operations Halted
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '13.5px', color: '#7F1D1D', margin: '4px 0 8px', lineHeight: 1.5 }}>
+                    <strong>Cancellation Reason:</strong> {shipment.cancellationReason || 'This shipment was cancelled due to operational circumstances.'}
+                  </p>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: '#991B1B' }}>
+                    {shipment.cancelledAt && (
+                      <span>Effective: <strong>{new Date(shipment.cancelledAt).toLocaleString()}</strong></span>
+                    )}
+                    <span>Waybill: <strong style={{ fontFamily: 'monospace' }}>{shipment.trackingNumber}</strong></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Primary Shipment Summary Card */}
             <div className="ace-card" style={{ marginBottom: '24px' }}>
               <div style={{
@@ -563,7 +658,11 @@ export default function TrackingView({
                 <div className="tracking-status-badge-wrap" style={{ textAlign: 'right', minWidth: '160px' }}>
                   <StatusBadge status={shipment.status} />
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                    SLA Status: <strong style={{ color: '#059669' }}>On-Time Guaranteed</strong>
+                    SLA Status: {shipment.status === 'CANCELLED' ? (
+                      <strong style={{ color: '#DC2626' }}>Cancelled / Void</strong>
+                    ) : (
+                      <strong style={{ color: '#059669' }}>On-Time Guaranteed</strong>
+                    )}
                   </div>
                 </div>
               </div>
@@ -581,23 +680,28 @@ export default function TrackingView({
                   position: 'relative' 
                 }}>
                   {milestoneSteps.map((step) => {
-                    const isStepCompleted = step.status === 'completed';
-                    const isStepActive = step.status === 'active';
+                    const isStepCancelled = step.status === 'cancelled';
+                    const isStepCompleted = !isStepCancelled && step.status === 'completed';
+                    const isStepActive = !isStepCancelled && step.status === 'active';
                     
                     return (
                       <div 
                         key={step.id} 
                         style={{
-                          backgroundColor: isStepActive 
-                            ? 'var(--color-light-blue)' 
-                            : isStepCompleted 
-                              ? '#F0FDF4' 
-                              : 'var(--color-very-light-blue)',
-                          border: isStepActive 
-                            ? '2px solid var(--color-bright-action)' 
-                            : isStepCompleted 
-                              ? '1px solid #BBF7D0' 
-                              : '1px solid var(--color-border)',
+                          backgroundColor: isStepCancelled
+                            ? '#FEF2F2'
+                            : isStepActive 
+                              ? 'var(--color-light-blue)' 
+                              : isStepCompleted 
+                                ? '#F0FDF4' 
+                                : 'var(--color-very-light-blue)',
+                          border: isStepCancelled
+                            ? '1px dashed #FCA5A5'
+                            : isStepActive 
+                              ? '2px solid var(--color-bright-action)' 
+                              : isStepCompleted 
+                                ? '1px solid #BBF7D0' 
+                                : '1px solid var(--color-border)',
                           borderRadius: '10px',
                           padding: '12px 14px',
                           position: 'relative',
@@ -605,20 +709,21 @@ export default function TrackingView({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: isStepCancelled ? '#DC2626' : 'var(--text-muted)' }}>
                             STEP {step.id}
                           </span>
                           <div>
+                            {isStepCancelled && <XCircle size={15} color="#DC2626" />}
                             {isStepCompleted && <CheckCircle2 size={15} color="#10B981" />}
                             {isStepActive && <Radio size={14} color="var(--color-bright-action)" className="animate-pulse" />}
-                            {!isStepCompleted && !isStepActive && <Clock size={14} color="var(--text-muted)" />}
+                            {!isStepCompleted && !isStepActive && !isStepCancelled && <Clock size={14} color="var(--text-muted)" />}
                           </div>
                         </div>
 
                         <div style={{ 
                           fontSize: '13px', 
                           fontWeight: 700, 
-                          color: isStepActive ? 'var(--color-primary-blue)' : isStepCompleted ? '#166534' : 'var(--text-secondary)',
+                          color: isStepCancelled ? '#991B1B' : isStepActive ? 'var(--color-primary-blue)' : isStepCompleted ? '#166534' : 'var(--text-secondary)',
                           lineHeight: 1.2
                         }}>
                           {step.name}
