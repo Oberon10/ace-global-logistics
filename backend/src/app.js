@@ -11,7 +11,7 @@ import helmet from "helmet";
 import dotenv from "dotenv";
 
 // Import the database connection utility function
-import connectDB from "./config/database.js";
+import connectDB, { isDatabaseConnected } from "./config/database.js";
 
 // Import authentication route endpoints and database seeder
 import authRoutes from "./routes/authRoutes.js";
@@ -22,6 +22,9 @@ import shipmentRoutes from "./routes/shipmentRoutes.js";
 
 // Import chatbot route endpoints (MongoDB persistence)
 import chatRoutes from "./routes/chatRoutes.js";
+
+// Import notification route endpoints (in-app shipment and dispatch alerts)
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 // Initialize environment configuration from local .env file
 dotenv.config();
@@ -106,6 +109,18 @@ app.get("/health", (req, res) => {
     });
 });
 
+// Database connection verification guard: ensure MongoDB Atlas is connected before executing API routes
+app.use("/api", (req, res, next) => {
+    if (!isDatabaseConnected()) {
+        return res.status(503).json({
+            success: false,
+            error: "Database unavailable. MongoDB Atlas is not currently connected.",
+            message: "Database unavailable. MongoDB Atlas is not currently connected."
+        });
+    }
+    next();
+});
+
 // Mount user authentication routes at /api/auth
 app.use("/api/auth", authRoutes);
 
@@ -114,6 +129,9 @@ app.use("/api/shipments", shipmentRoutes);
 
 // Mount chatbot routes at /api/chat (MongoDB-backed prompt & response persistence)
 app.use("/api/chat", chatRoutes);
+
+// Mount in-app notification routes at /api/notifications
+app.use("/api/notifications", notificationRoutes);
 
 // Catch-all 404 handler for undefined API routes
 app.use((req, res, next) => {
