@@ -23,7 +23,128 @@ export const ROUTE_MAP = {
   'admin-customers': '/admin/customers',
   'admin-settings': '/admin/settings',
   'analytics': '/admin/analytics',
-  'users': '/admin/users'
+};
+
+/**
+ * Standardized mapping helper: converts a MongoDB shipment document into reactive frontend format.
+ * Preserves both estimated and verified package details, lifecycle stages, and audit history.
+ */
+export const mapShipmentDoc = (b) => {
+  if (!b) return null;
+  const rawStatus = b.currentStatus || b.status || 'PENDING_VERIFICATION';
+  const cleanStatus = String(rawStatus).toUpperCase().trim().replace(/\s+/g, '_');
+  const displayStatus = cleanStatus === 'IN_TRANSIT' ? 'IN TRANSIT' :
+                        cleanStatus === 'PENDING_VERIFICATION' ? 'PENDING VERIFICATION' :
+                        cleanStatus === 'READY_FOR_DISPATCH' ? 'READY FOR DISPATCH' :
+                        cleanStatus === 'OUT_FOR_DELIVERY' ? 'OUT FOR DELIVERY' :
+                        cleanStatus === 'DELIVERY_FAILED' ? 'DELIVERY FAILED' :
+                        cleanStatus === 'ON_HOLD' ? 'ON HOLD' :
+                        cleanStatus.replace(/_/g, ' ');
+
+  const pkg = b.packageDetails || b.package || {};
+  const estWeight = pkg.estimatedWeight !== undefined && pkg.estimatedWeight !== null 
+    ? Number(pkg.estimatedWeight) 
+    : (Number(pkg.weightKg) || 10);
+  const actWeight = (pkg.actualWeight !== undefined && pkg.actualWeight !== null) 
+    ? Number(pkg.actualWeight) 
+    : null;
+  const estDims = pkg.estimatedDimensions || pkg.dimensions || '60 × 45 × 40 cm';
+  const actDims = pkg.actualDimensions || '';
+
+  return {
+    _id: b._id,
+    id: b.trackingNumber || b._id,
+    trackingNumber: b.trackingNumber,
+    status: displayStatus,
+    statusRaw: cleanStatus,
+    statusCode: cleanStatus.toLowerCase().replace(/_/g, '-'),
+    paymentStatus: b.paymentStatus || 'PENDING',
+    assignedStaff: b.assignedStaff,
+    createdBy: b.createdBy,
+    createdByRole: b.createdByRole || 'CUSTOMER',
+    verifiedBy: b.verifiedBy,
+    verifiedAt: b.verifiedAt,
+    verificationNotes: b.verificationNotes || pkg.verificationNotes || '',
+    method: b.shippingMethod || pkg.category || 'Air Freight Priority',
+    methodType: (b.shippingMethod || '').toLowerCase().includes('ocean') ? 'ocean' :
+                (b.shippingMethod || '').toLowerCase().includes('rail') ? 'rail' :
+                (b.shippingMethod || '').toLowerCase().includes('road') ? 'road' : 'air',
+    origin: b.origin?.city ? `${b.origin.city}, ${b.origin.country || 'Ghana'}` : (b.origin?.address || 'Origin Hub'),
+    destination: b.destination?.city ? `${b.destination.city}, ${b.destination.country || 'United Kingdom'}` : (b.destination?.address || 'Destination Hub'),
+    currentLocation: b.currentLocation || (b.origin?.city ? `${b.origin.city} Hub` : 'Intake Hub'),
+    estimatedDelivery: pkg.estimatedDelivery ? new Date(pkg.estimatedDelivery).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'September 18, 2026',
+    createdDate: b.createdAt ? new Date(b.createdAt).toISOString().split('T')[0] : '2026-10-11',
+    customer: b.customer || b.senderDetails?.company || b.senderDetails?.name || b.sender?.name || 'Commercial Freight Consignor',
+    sender: {
+      _id: b.sender?._id || b.senderDetails?.id,
+      name: b.senderDetails?.name || b.sender?.name || 'ACE Consignor',
+      email: b.senderDetails?.email || b.sender?.email || '',
+      company: b.senderDetails?.company || b.customer || '',
+      phone: b.senderDetails?.phone || '',
+      address: b.senderDetails?.address || b.origin?.address || 'Terminal Hub',
+      city: b.senderDetails?.city || b.origin?.city || 'Accra',
+      country: b.senderDetails?.country || b.origin?.country || 'Ghana'
+    },
+    receiver: b.receiver?.name ? b.receiver : {
+      name: 'Consignee Partner',
+      company: '',
+      phone: '',
+      email: '',
+      address: b.destination?.address || 'Destination Hub',
+      city: b.destination?.city || 'London',
+      country: b.destination?.country || 'United Kingdom'
+    },
+    package: {
+      type: pkg.category || 'General Freight',
+      weightKg: actWeight !== null ? actWeight : estWeight,
+      estimatedWeight: estWeight,
+      actualWeight: actWeight,
+      dimensions: actDims || estDims,
+      estimatedDimensions: estDims,
+      actualDimensions: actDims,
+      condition: pkg.condition || 'Intact / Standard Packaging',
+      specialHandling: pkg.specialHandling || '',
+      verificationNotes: pkg.verificationNotes || b.verificationNotes || '',
+      pieces: pkg.pieces || 1,
+      declaredValue: pkg.declaredValue || '$12,450',
+      insurance: pkg.insurance || 'Standard Commercial Liability',
+      sealNumber: pkg.sealNumber || `ACE-SL-${(b.trackingNumber || '00000').slice(-5)}`
+    },
+    charges: b.charges || {
+      freight: 360,
+      fuelSurcharge: 43,
+      customsHandling: 35,
+      total: 438
+    },
+    timeline: (b.trackingHistory && b.trackingHistory.length > 0)
+      ? b.trackingHistory.map((h, i) => {
+          const rawH = (h.status || 'CHECKPOINT').toUpperCase().trim().replace(/\s+/g, '_');
+          const title = rawH === 'PENDING_VERIFICATION' ? 'Shipment Request Created' :
+                        rawH === 'VERIFIED' ? 'Package Physically Verified' :
+                        rawH === 'READY_FOR_DISPATCH' ? 'Ready for Dispatch' :
+                        rawH === 'IN_TRANSIT' ? 'In Transit' :
+                        rawH === 'OUT_FOR_DELIVERY' ? 'Out for Delivery' :
+                        rawH === 'DELIVERED' ? 'Shipment Delivered' :
+                        rawH === 'ON_HOLD' ? 'Shipment On Hold' :
+                        rawH === 'REJECTED' ? 'Shipment Rejected' :
+                        rawH.replace(/_/g, ' ');
+
+          return {
+            id: i + 1,
+            title,
+            statusRaw: rawH,
+            description: h.description || `Logged at ${h.location || 'Hub'}`,
+            note: h.note || '',
+            location: h.location || 'Hub',
+            date: h.timestamp ? new Date(h.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recorded',
+            time: h.timestamp ? new Date(h.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '08:00 AM',
+            status: i === b.trackingHistory.length - 1 ? 'active' : 'completed',
+            changedByRole: h.changedByRole || 'STAFF',
+            updatedBy: h.updatedBy
+          };
+        })
+      : []
+  };
 };
 
 export function AppProvider({ children }) {
@@ -68,18 +189,126 @@ export function AppProvider({ children }) {
     return 'light';
   });
 
-  // Central Reactive Shipments Repository
-  const [shipments, setShipments] = useState(INITIAL_SHIPMENTS);
+  // API Base URL helper
+  const getApiBase = () => {
+    if (typeof window !== 'undefined') {
+      if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:5000';
+      }
+    }
+    return process.env.NEXT_PUBLIC_API_URL || '';
+  };
+
+  // Central Reactive Shipments Repository strictly retrieved from MongoDB Atlas
+  const [shipments, setShipments] = useState([]);
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [trackingQuery, setTrackingQuery] = useState('');
   const [hasSearchedTracking, setHasSearchedTracking] = useState(false);
   const [prefilledQuote, setPrefilledQuote] = useState(null);
 
+  // In-App Notifications State
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+
+  // Real DB Admin Statistics State
+  const [adminStats, setAdminStats] = useState(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
   // Receipt Modal State
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptShipment, setReceiptShipment] = useState(null);
 
-  // Hydrate client state from localStorage and MongoDB on mount
+  // Fetch in-app notifications
+  const fetchNotifications = async () => {
+    try {
+      const backendUrl = `${getApiBase()}/api/notifications`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(backendUrl, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.notifications)) {
+          setNotifications(data.notifications);
+          setUnreadNotifCount(data.unreadCount !== undefined ? data.unreadCount : data.notifications.filter(n => !n.read).length);
+        }
+      }
+    } catch (e) {
+      console.warn('Notifications fetch notice:', e);
+    }
+  };
+
+  const handleMarkNotificationRead = async (id) => {
+    try {
+      const backendUrl = `${getApiBase()}/api/notifications/${id}/read`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      await fetch(backendUrl, { method: 'PATCH', headers });
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n));
+      setUnreadNotifCount(prev => Math.max(0, prev - 1));
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      const backendUrl = `${getApiBase()}/api/notifications/read-all`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      await fetch(backendUrl, { method: 'PATCH', headers });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadNotifCount(0);
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  // Fetch real MongoDB Admin operational statistics
+  const fetchAdminStats = async () => {
+    try {
+      setIsLoadingStats(true);
+      const backendUrl = `${getApiBase()}/api/shipments/stats/admin`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(backendUrl, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success) {
+          setAdminStats(data);
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('Admin stats fetch notice:', e);
+    } finally {
+      setIsLoadingStats(false);
+    }
+    return null;
+  };
+
+  // Fetch live shipments strictly from MongoDB Atlas
+  const fetchLiveShipments = async () => {
+    try {
+      const backendUrl = `${getApiBase()}/api/shipments`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(backendUrl, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.shipments)) {
+          const mapped = data.shipments.map(mapShipmentDoc).filter(Boolean);
+          setShipments(mapped);
+          return mapped;
+        }
+      }
+    } catch (e) {
+      console.warn('Live shipments fetch warning:', e);
+    }
+    return [];
+  };
+
+  // Hydrate client state from MongoDB on mount
   useEffect(() => {
     try {
       const savedTheme = localStorage.getItem('ace_theme') || 'light';
@@ -101,116 +330,11 @@ export function AppProvider({ children }) {
         setCurrentUser(JSON.parse(savedUser));
       }
 
-      // Fetch live shipments from MongoDB
-      const fetchLiveShipments = async () => {
-        try {
-          const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:5000/api/shipments'
-            : '/api/shipments';
-          const token = localStorage.getItem('ace_auth_token');
-          const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-          const res = await fetch(backendUrl, { headers });
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.success && Array.isArray(data.shipments) && data.shipments.length > 0) {
-              const mapped = data.shipments.map(b => ({
-                id: b.trackingNumber || b._id,
-                trackingNumber: b.trackingNumber,
-                status: b.currentStatus === 'IN_TRANSIT' ? 'IN TRANSIT' :
-                        b.currentStatus === 'ORDER_CREATED' ? 'ORDER CREATED' :
-                        b.currentStatus === 'OUT_FOR_DELIVERY' ? 'OUT FOR DELIVERY' :
-                        b.currentStatus || 'IN TRANSIT',
-                statusCode: (b.currentStatus || 'transit').toLowerCase().replace('_', '-'),
-                method: b.packageDetails?.category || 'Air Freight Priority',
-                methodType: 'air',
-                origin: `${b.origin?.city || 'Accra'}, ${b.origin?.country || 'Ghana'}`,
-                destination: `${b.destination?.city || 'London'}, ${b.destination?.country || 'UK'}`,
-                currentLocation: b.origin?.city ? `${b.origin.city} Hub` : 'In Transit',
-                estimatedDelivery: b.packageDetails?.estimatedDelivery ? new Date(b.packageDetails.estimatedDelivery).toLocaleDateString() : 'September 18, 2026',
-                createdDate: b.createdAt ? new Date(b.createdAt).toISOString().split('T')[0] : '2026-09-12',
-                customer: b.sender?.name || 'Commercial Freight Consignor',
-                sender: {
-                  name: b.sender?.name || 'ACE Consignor',
-                  address: b.origin?.address || 'Terminal Hub',
-                  city: b.origin?.city || 'Accra',
-                  country: b.origin?.country || 'Ghana'
-                },
-                receiver: {
-                  name: 'Consignee Partner',
-                  address: b.destination?.address || 'Destination Hub',
-                  city: b.destination?.city || 'London',
-                  country: b.destination?.country || 'UK'
-                },
-                package: {
-                  type: b.packageDetails?.category || 'General Freight',
-                  weightKg: b.packageDetails?.weightKg || 10,
-                  dimensions: '60 × 45 × 40 cm',
-                  pieces: 1,
-                  declaredValue: '$12,450',
-                  sealNumber: `ACE-SL-${b.trackingNumber.slice(-5)}`
-                },
-                charges: {
-                  freight: 360,
-                  fuelSurcharge: 43,
-                  customsHandling: 35,
-                  total: 438
-                },
-                timeline: (b.trackingHistory && b.trackingHistory.length > 0)
-                  ? b.trackingHistory.map((h, i) => ({
-                      id: i + 1,
-                      title: h.status?.replace('_', ' ') || 'Checkpoint',
-                      description: h.description || `Logged at ${h.location}`,
-                      location: h.location || 'Hub',
-                      date: h.timestamp ? new Date(h.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sep 12, 2026',
-                      time: h.timestamp ? new Date(h.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '08:00 AM',
-                      status: i === b.trackingHistory.length - 1 ? 'completed' : 'completed'
-                    }))
-                  : []
-              }));
-
-              setShipments(prev => {
-                const combined = [...mapped, ...prev];
-                const seen = new Set();
-                return combined.filter(s => {
-                  const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
-                  if (!key || seen.has(key)) return false;
-                  seen.add(key);
-                  return true;
-                });
-              });
-            }
-          }
-        } catch (e) {
-          console.warn('Live shipments fetch warning:', e);
-        }
-      };
       fetchLiveShipments();
-
-      const storedShipments = localStorage.getItem('ace_registered_consignments');
-      if (storedShipments) {
-        const parsed = JSON.parse(storedShipments);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const seen = new Set();
-          const deduplicated = parsed.filter(s => {
-            const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          setShipments(prev => {
-            const merged = [...prev, ...deduplicated];
-            const dedupSet = new Set();
-            return merged.filter(s => {
-              const key = (s.trackingNumber || s.id || '').trim().toUpperCase();
-              if (!key || dedupSet.has(key)) return false;
-              dedupSet.add(key);
-              return true;
-            });
-          });
-        }
-      }
+      fetchNotifications();
+      fetchAdminStats();
     } catch (err) {
-      console.warn('LocalStorage hydration error:', err);
+      console.warn('Hydration error:', err);
     } finally {
       setIsHydrated(true);
     }
@@ -255,7 +379,7 @@ export function AppProvider({ children }) {
     navigate(target);
   };
 
-  // Tracking Search Functionality
+  // Tracking Search Functionality (Queries MongoDB Atlas strictly)
   const handleSearchTracking = async (trackingNumber) => {
     const cleanNumber = (trackingNumber || '').trim();
     if (!cleanNumber) {
@@ -269,61 +393,23 @@ export function AppProvider({ children }) {
     setTrackingQuery(cleanNumber);
     setHasSearchedTracking(true);
 
-    const upperClean = cleanNumber.toUpperCase();
-    const stripped = upperClean.replace(/[^A-Z0-9]/g, '');
+    let found = null;
 
-    let found = shipments.find(s => {
-      const sNum = (s.trackingNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const sId = (s.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const sSeal = (s.package?.sealNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      return sNum === stripped || sId === stripped || sSeal === stripped;
-    });
-
-    if (!found) {
-      try {
-        const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? `http://localhost:5000/api/shipments/track/${encodeURIComponent(cleanNumber)}`
-          : `/api/shipments/track/${encodeURIComponent(cleanNumber)}`;
-        const res = await fetch(backendUrl);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.success && data?.shipment) {
-            const bShipment = data.shipment;
-            found = {
-              id: bShipment._id || bShipment.id || bShipment.trackingNumber,
-              trackingNumber: bShipment.trackingNumber,
-              status: bShipment.currentStatus || 'IN TRANSIT',
-              origin: bShipment.origin?.city || bShipment.origin?.address || 'Origin Terminal',
-              destination: bShipment.destination?.city || bShipment.destination?.address || 'Destination Hub',
-              currentLocation: bShipment.currentLocation || bShipment.origin?.city || 'En Route',
-              estimatedDelivery: bShipment.estimatedDelivery || 'In Progress',
-              method: bShipment.shippingMethod || 'Standard Express Cargo',
-              methodType: bShipment.methodType || 'Air',
-              sender: bShipment.sender || { name: 'Authorized Consignor' },
-              receiver: bShipment.receiver || { name: 'Authorized Consignee' },
-              package: bShipment.packageDetails || { type: 'Commercial Freight', weight: 'Standard' },
-              timeline: (bShipment.trackingHistory && bShipment.trackingHistory.length > 0)
-                ? bShipment.trackingHistory.map((h, i) => ({
-                    id: i + 1,
-                    title: h.status || 'Status Checkpoint',
-                    description: h.description || `Checkpoint logged at ${h.location}`,
-                    location: h.location || 'Transit Hub',
-                    date: h.timestamp ? new Date(h.timestamp).toLocaleDateString() : 'Recorded',
-                    time: h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '',
-                    status: (i === bShipment.trackingHistory.length - 1) ? 'active' : 'completed'
-                  }))
-                : [
-                    { id: 1, title: 'Manifest Created', description: 'Booking confirmed', location: bShipment.origin?.city || 'Origin', date: 'Recorded', status: 'completed' },
-                    { id: 2, title: 'In Transit', description: 'Consignment en route', location: bShipment.currentLocation || 'En Route', date: 'Today', status: 'active' }
-                  ]
-            };
-          }
+    // 1. Query MongoDB Atlas directly through the backend API
+    try {
+      const backendUrl = `${getApiBase()}/api/shipments/track/${encodeURIComponent(cleanNumber)}`;
+      const res = await fetch(backendUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && data?.shipment) {
+          found = mapShipmentDoc(data.shipment);
         }
-      } catch {
-        // Continue with local result
       }
+    } catch (e) {
+      console.warn('Live tracking lookup notice:', e);
     }
 
+    // Do NOT fall back to in-memory/mock data; reflect true MongoDB Atlas state
     setSelectedShipment(found || null);
     router.push('/tracking');
 
@@ -370,136 +456,167 @@ export function AppProvider({ children }) {
     setReceiptShipment(null);
   };
 
-  // Shipment Creation (Strict Single Instance per Creation, Persisted to MongoDB)
-  const handleShipmentCreated = (newShipment, postAction = null) => {
+  // Shipment Creation (Initial status PENDING_VERIFICATION, Persisted to MongoDB Atlas)
+  const handleShipmentCreated = async (newShipment, postAction = null) => {
     if (!newShipment) return;
 
-    setShipments(prev => {
-      const trackingKey = (newShipment.trackingNumber || newShipment.id || '').trim().toUpperCase();
-      const alreadyExists = prev.some(s => (s.trackingNumber || s.id || '').trim().toUpperCase() === trackingKey);
+    let savedShipment = newShipment;
 
-      if (alreadyExists) {
-        return prev; // Prevent duplicate entries
-      }
-
-      const updated = [newShipment, ...prev];
-      try {
-        localStorage.setItem('ace_registered_consignments', JSON.stringify(updated));
-      } catch (err) {
-        console.error('Failed to sync shipments to localStorage', err);
-      }
-      return updated;
-    });
-
-    setSelectedShipment(newShipment);
-
-    // Persist directly to MongoDB
+    // Persist directly to MongoDB Atlas
     try {
-      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:5000/api/shipments'
-        : '/api/shipments';
+      const backendUrl = `${getApiBase()}/api/shipments`;
       
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      fetch(backendUrl, {
+      const rawWeight = Number(newShipment.package?.estimatedWeight || newShipment.package?.weightKg || 10);
+      const rawDimensions = String(newShipment.package?.estimatedDimensions || newShipment.package?.dimensions || '60 × 45 × 40 cm');
+
+      const res = await fetch(backendUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           trackingNumber: newShipment.trackingNumber || newShipment.id,
           origin: newShipment.origin,
           destination: newShipment.destination,
-          status: newShipment.status || 'IN_TRANSIT',
+          // Initial status is PENDING_VERIFICATION for customer bookings
+          status: newShipment.status || 'PENDING_VERIFICATION',
           method: newShipment.method,
+          customer: newShipment.customer || newShipment.sender?.company || newShipment.sender?.name,
+          sender: newShipment.sender,
+          receiver: newShipment.receiver,
+          charges: newShipment.charges,
+          timeline: newShipment.timeline,
           packageDetails: {
-            weightKg: newShipment.package?.weightKg || 10,
+            estimatedWeight: rawWeight,
+            weightKg: rawWeight,
+            estimatedDimensions: rawDimensions,
+            dimensions: rawDimensions,
             category: newShipment.package?.type || 'General Freight',
+            pieces: Number(newShipment.package?.pieces) || 1,
+            declaredValue: newShipment.package?.declaredValue || '$12,450',
+            insurance: newShipment.package?.insurance || 'Standard Commercial Liability',
+            sealNumber: newShipment.package?.sealNumber,
             estimatedDelivery: newShipment.estimatedDelivery
           }
         })
-      }).catch(err => {
-        console.warn('Backend MongoDB shipment registration notice:', err);
       });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        alert(data?.message || 'Database error: Failed to save shipment to MongoDB Atlas.');
+        throw new Error(data?.message || 'Failed to save shipment to MongoDB Atlas');
+      }
+
+      if (data?.shipment) {
+        savedShipment = mapShipmentDoc(data.shipment);
+      }
     } catch (err) {
-      console.warn('Shipment persist warning:', err);
+      console.error('Shipment persist error:', err);
+      alert('Error persisting shipment to MongoDB Atlas: ' + err.message);
+      throw err;
     }
+
+    setShipments(prev => {
+      const trackingKey = (savedShipment.trackingNumber || savedShipment.id || '').trim().toUpperCase();
+      const filtered = prev.filter(s => (s.trackingNumber || s.id || '').trim().toUpperCase() !== trackingKey);
+      return [savedShipment, ...filtered];
+    });
+
+    setSelectedShipment(savedShipment);
+
+    // Refresh notifications and admin stats
+    fetchNotifications();
+    fetchAdminStats();
 
     if (postAction === 'view-details') {
       navigate('/tracking');
     } else if (postAction === 'view-receipt') {
-      handleOpenReceipt(newShipment);
+      handleOpenReceipt(savedShipment);
     }
   };
 
-  // Shipment Status Update (Staff & Admin, Persisted to MongoDB)
-  const handleUpdateShipmentStatus = (shipmentId, updates) => {
-    setShipments(prev => {
-      const updatedList = prev.map(s => {
-        if (s.id === shipmentId || s.trackingNumber === shipmentId) {
-          const now = new Date();
-          const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  // Staff Physical Package Verification
+  const handleVerifyShipment = async (shipmentId, verificationData) => {
+    try {
+      const backendUrl = `${getApiBase()}/api/shipments/${encodeURIComponent(shipmentId)}/verify`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-          const updatedTimeline = [
-            ...s.timeline.map(t => t.status === 'active' ? { ...t, status: 'completed' } : t),
-            {
-              id: s.timeline.length + 1,
-              title: `Status Milestone: ${updates.status}`,
-              description: updates.note || `Dispatcher update recorded at ${updates.currentLocation}.`,
-              location: updates.currentLocation || s.currentLocation,
-              date: dateStr,
-              time: timeStr,
-              status: 'active'
-            }
-          ];
-
-          const updated = {
-            ...s,
-            status: updates.status,
-            currentLocation: updates.currentLocation || s.currentLocation,
-            timeline: updatedTimeline
-          };
-
-          if (selectedShipment?.id === s.id || selectedShipment?.trackingNumber === s.trackingNumber) {
-            setSelectedShipment(updated);
-          }
-          return updated;
-        }
-        return s;
+      const res = await fetch(backendUrl, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(verificationData)
       });
 
-      try {
-        localStorage.setItem('ace_registered_consignments', JSON.stringify(updatedList));
-      } catch (err) {
-        console.error('Failed to sync updated shipment to localStorage', err);
-      }
-      return updatedList;
-    });
+      const data = await res.json().catch(() => null);
 
-    // Persist update to MongoDB
+      if (!res.ok || !data?.success) {
+        alert(data?.message || 'Failed to verify package.');
+        return null;
+      }
+
+      if (data?.shipment) {
+        const verifiedMapped = mapShipmentDoc(data.shipment);
+        setShipments(prev => prev.map(s => (s.id === shipmentId || s.trackingNumber === shipmentId) ? verifiedMapped : s));
+        if (selectedShipment?.id === shipmentId || selectedShipment?.trackingNumber === shipmentId) {
+          setSelectedShipment(verifiedMapped);
+        }
+        fetchNotifications();
+        fetchAdminStats();
+        return verifiedMapped;
+      }
+    } catch (err) {
+      console.error('Staff verify shipment error:', err);
+      alert('Failed to connect to backend database to verify shipment: ' + err.message);
+      return null;
+    }
+  };
+
+  // Shipment Status Update (Staff & Admin, Persisted to MongoDB Atlas adhering to transition rules)
+  const handleUpdateShipmentStatus = async (shipmentId, updates) => {
     try {
-      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? `http://localhost:5000/api/shipments/${encodeURIComponent(shipmentId)}/status`
-        : `/api/shipments/${encodeURIComponent(shipmentId)}/status`;
+      const backendUrl = `${getApiBase()}/api/shipments/${encodeURIComponent(shipmentId)}/status`;
       
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      fetch(backendUrl, {
+      const res = await fetch(backendUrl, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({
           status: updates.status,
           location: updates.currentLocation,
-          description: updates.note
+          description: updates.description || updates.note,
+          note: updates.note
         })
-      }).catch(err => {
-        console.warn('Backend MongoDB status update notice:', err);
       });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        alert(data?.message || 'Failed to update shipment status in MongoDB Atlas.');
+        return;
+      }
+
+      if (data?.shipment) {
+        const updatedMapped = mapShipmentDoc(data.shipment);
+        setShipments(prev => prev.map(s => (s.id === shipmentId || s.trackingNumber === shipmentId) ? updatedMapped : s));
+        if (selectedShipment?.id === shipmentId || selectedShipment?.trackingNumber === shipmentId) {
+          setSelectedShipment(updatedMapped);
+        }
+        fetchNotifications();
+        fetchAdminStats();
+        return updatedMapped;
+      }
     } catch (err) {
-      console.warn('Status update persist warning:', err);
+      console.error('Backend MongoDB status update error:', err);
+      alert('Failed to connect to backend database to update status: ' + err.message);
+      return;
     }
   };
 
@@ -633,7 +750,21 @@ export function AppProvider({ children }) {
     handleSelectShipment,
     handleClearTracking,
     handleShipmentCreated,
+    handleVerifyShipment,
     handleUpdateShipmentStatus,
+    fetchLiveShipments,
+
+    // Notifications
+    notifications,
+    unreadNotifCount,
+    fetchNotifications,
+    handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
+
+    // Real DB Operational Statistics
+    adminStats,
+    isLoadingStats,
+    fetchAdminStats,
 
     // Quote & New Shipment
     prefilledQuote,
