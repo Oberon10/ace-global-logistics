@@ -33,7 +33,17 @@ export default function UserManagementView({
   initialFilter = 'ALL',
   currentView = 'users'
 }) {
-  const [users, setUsers] = useState(USERS_LIST);
+  const getApiBase = () => {
+    if (typeof window !== 'undefined') {
+      if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:5000';
+      }
+    }
+    return process.env.NEXT_PUBLIC_API_URL || '';
+  };
+
+  const [users, setUsers] = useState([]);
   const [activeFilter, setActiveFilter] = useState(initialFilter); // 'ALL', 'Staff', 'Customer', 'Admin'
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
@@ -42,19 +52,17 @@ export default function UserManagementView({
   const fetchMongoUsers = async () => {
     try {
       setIsLoadingUsers(true);
-      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:5000/api/auth/users'
-        : '/api/auth/users';
+      const backendUrl = `${getApiBase()}/api/auth/users`;
       const res = await fetch(backendUrl);
       if (res.ok) {
         const data = await res.json();
-        if (data?.success && Array.isArray(data.users) && data.users.length > 0) {
+        if (data?.success && Array.isArray(data.users)) {
           const mapped = data.users.map(u => ({
             id: u._id || u.id,
             _id: u._id || u.id,
             name: u.name,
             email: u.email,
-            loginPassword: u.role === 'Admin' ? 'AdminSecurePass#2026' : u.role === 'Staff' ? 'StaffDispatchKey@99' : 'ClientSecure#2026',
+            loginPassword: '••••••••',
             role: u.role,
             department: u.department || 'Operations',
             phone: u.phone || '+44 20 7946 0000',
@@ -63,16 +71,7 @@ export default function UserManagementView({
             accessScope: u.accessScope || (u.role === 'Admin' ? 'Full All-Portals Executive Authority' : u.role === 'Staff' ? 'Terminal Dispatcher & Customer Console Only' : 'Personal Shipments & Telemetry Records Only')
           }));
 
-          setUsers(prev => {
-            const seen = new Set();
-            const combined = [...mapped, ...prev];
-            return combined.filter(user => {
-              const email = (user.email || '').toLowerCase().trim();
-              if (!email || seen.has(email)) return false;
-              seen.add(email);
-              return true;
-            });
-          });
+          setUsers(mapped);
         }
       }
     } catch (err) {
@@ -136,8 +135,9 @@ export default function UserManagementView({
   };
 
   // Toggle active / inactive status
-  const toggleStatus = (id) => {
+  const toggleStatus = async (id) => {
     let nextStatus = 'Active';
+    const previousUsers = [...users];
     const updatedUsers = users.map(u => {
       if (u.id === id || u._id === id) {
         nextStatus = u.status === 'Active' ? 'Inactive' : 'Active';
@@ -149,30 +149,23 @@ export default function UserManagementView({
 
     // Sync status change to backend MongoDB
     try {
-      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? `http://localhost:5000/api/auth/users/${id}`
-        : `/api/auth/users/${id}`;
-      fetch(backendUrl, {
+      const backendUrl = `${getApiBase()}/api/auth/users/${id}`;
+      const res = await fetch(backendUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: nextStatus })
-      }).catch(err => console.warn('User status sync warning:', err));
-    } catch {
-      // ignore
-    }
-    
-    // Sync status change to localStorage for staff
-    const targetUser = updatedUsers.find(u => u.id === id || u._id === id);
-    if (targetUser && targetUser.role?.toLowerCase() === 'staff') {
-      try {
-        const raw = localStorage.getItem('ace_registered_staff');
-        const list = raw ? JSON.parse(raw) : [];
-        const filtered = list.filter(s => s.email?.trim().toLowerCase() !== targetUser.email?.trim().toLowerCase());
-        filtered.push(targetUser);
-        localStorage.setItem('ace_registered_staff', JSON.stringify(filtered));
-      } catch (err) {
-        console.error('Failed to sync staff status to localStorage', err);
+      });
+      if (!res.ok) {
+        console.warn('User status sync failed on server');
+        setUsers(previousUsers);
+        alert('Failed to update status in MongoDB Atlas.');
+        return;
       }
+    } catch (err) {
+      console.warn('User status sync warning:', err);
+      setUsers(previousUsers);
+      alert('Error updating status in MongoDB Atlas: ' + err.message);
+      return;
     }
 
     if (inspectUser && (inspectUser.id === id || inspectUser._id === id)) {
@@ -180,119 +173,97 @@ export default function UserManagementView({
     }
   };
 
-  // Add new user
-  const handleAddUser = (e) => {
+  // Delete user from MongoDB Atlas
+  const handleDeleteUser = async (id) => {
+    if (!window.confirm('Are you sure you want to permanently delete this account from MongoDB Atlas?')) return;
+    try {
+      const backendBase = getApiBase();
+      const res = await fetch(`${backendBase}/api/auth/users/${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setUsers(prev => prev.filter(u => u.id !== id && u._id !== id));
+        if (inspectUser && (inspectUser.id === id || inspectUser._id === id)) {
+          setInspectUser(null);
+        }
+      } else {
+        alert(data?.message || 'Failed to delete user from MongoDB Atlas.');
+      }
+    } catch (err) {
+      console.error('Delete user error:', err);
+      alert('Error connecting to database to delete user: ' + err.message);
+    }
+  };
+
+  // Add new user with strict MongoDB Atlas persistence
+  const handleAddUser = async (e) => {
     e.preventDefault();
     if (!newUserName || !newUserEmail) return;
 
-    const generatedScope = newUserRole === 'Admin' 
-      ? 'Full All-Portals Executive Authority (Privileged to view staff & customer login details)'
-      : newUserRole === 'Staff'
-      ? 'Terminal Dispatcher & Customer Console Only'
-      : 'Personal Shipments & Telemetry Records Only';
-
     const tempPassword = newUserPassword || (newUserRole === 'Admin' ? 'AdminSecurePass#2026' : newUserRole === 'Staff' ? 'StaffDispatchKey@99' : 'ClientSecure#2026');
 
-    const created = {
-      id: `usr-${Date.now()}`,
-      name: newUserName,
-      email: newUserEmail,
-      loginPassword: tempPassword,
-      role: newUserRole,
-      department: newUserDept,
-      phone: newUserPhone,
-      status: 'Active',
-      lastLogin: 'Just now',
-      accessScope: generatedScope
-    };
+    const backendBase = getApiBase();
 
-    setUsers([created, ...users]);
+    try {
+      let endpoint = `${backendBase}/api/auth/register`;
+      let payload = {
+        name: newUserName.trim(),
+        email: newUserEmail.trim().toLowerCase(),
+        password: tempPassword,
+        role: 'CUSTOMER',
+        phone: newUserPhone,
+        company: newUserDept
+      };
 
-    const backendBase = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:5000'
-      : '';
-
-    // Persist to MongoDB based on role
-    if (newUserRole === 'Staff') {
-      try {
-        const raw = localStorage.getItem('ace_registered_staff');
-        const list = raw ? JSON.parse(raw) : [];
-        const filtered = list.filter(s => s.email?.trim().toLowerCase() !== newUserEmail.trim().toLowerCase());
-        filtered.push(created);
-        localStorage.setItem('ace_registered_staff', JSON.stringify(filtered));
-
-        // Persist to MongoDB Staff collection
-        fetch(`${backendBase}/api/auth/staff`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newUserName,
-            email: newUserEmail,
-            password: tempPassword,
-            role: 'STAFF',
-            department: newUserDept,
-            phone: newUserPhone
-          })
-        }).then(() => fetchMongoUsers()).catch(err => {
-          console.warn('Backend MongoDB staff registration notice:', err);
-        });
-      } catch (err) {
-        console.error('Failed to sync staff to localStorage', err);
+      if (newUserRole === 'Staff') {
+        endpoint = `${backendBase}/api/auth/staff`;
+        payload = {
+          name: newUserName.trim(),
+          email: newUserEmail.trim().toLowerCase(),
+          password: tempPassword,
+          role: 'STAFF',
+          department: newUserDept,
+          phone: newUserPhone
+        };
+      } else if (newUserRole === 'Admin') {
+        endpoint = `${backendBase}/api/auth/admin`;
+        payload = {
+          name: newUserName.trim(),
+          email: newUserEmail.trim().toLowerCase(),
+          password: tempPassword,
+          role: 'ADMIN',
+          title: 'Systems Administrator',
+          department: newUserDept,
+          phone: newUserPhone
+        };
       }
-    } else if (newUserRole === 'Admin') {
-      // Persist to MongoDB Admin collection
-      try {
-        fetch(`${backendBase}/api/auth/admin`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newUserName,
-            email: newUserEmail,
-            password: tempPassword,
-            role: 'ADMIN',
-            title: 'Systems Administrator',
-            department: newUserDept,
-            phone: newUserPhone
-          })
-        }).then(() => fetchMongoUsers()).catch(err => {
-          console.warn('Backend MongoDB admin registration notice:', err);
-        });
-      } catch (err) {
-        console.error('Failed to sync admin to backend', err);
-      }
-    } else if (newUserRole === 'Customer') {
-      try {
-        const raw = localStorage.getItem('ace_registered_customers');
-        const list = raw ? JSON.parse(raw) : [];
-        const filtered = list.filter(c => c.email?.trim().toLowerCase() !== newUserEmail.trim().toLowerCase());
-        filtered.push(created);
-        localStorage.setItem('ace_registered_customers', JSON.stringify(filtered));
 
-        // Sync new customer directly to MongoDB via backend REST API
-        fetch(`${backendBase}/api/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newUserName,
-            email: newUserEmail,
-            password: tempPassword,
-            role: 'CUSTOMER',
-            phone: newUserPhone,
-            company: newUserDept
-          })
-        }).then(() => fetchMongoUsers()).catch(err => {
-          console.warn('Backend MongoDB customer registration notice:', err);
-        });
-      } catch (err) {
-        console.error('Failed to sync customer to storage', err);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        alert(data?.message || 'Failed to persist account to MongoDB Atlas. Please verify input data.');
+        return;
       }
+
+      // Re-fetch users directly from MongoDB Atlas to ensure consistency
+      await fetchMongoUsers();
+
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserPhone('+44 20 7946 0000');
+      setAddModalOpen(false);
+    } catch (err) {
+      console.error('Failed to create account in MongoDB:', err);
+      alert('Network or server error while connecting to MongoDB Atlas: ' + err.message);
     }
-
-    setNewUserName('');
-    setNewUserEmail('');
-    setNewUserPassword('');
-    setNewUserPhone('+44 20 7946 0000');
-    setAddModalOpen(false);
   };
 
   // Filtered users
@@ -912,14 +883,24 @@ export default function UserManagementView({
 
               {/* Modal Actions */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => toggleStatus(inspectUser.id)}
-                  className="ace-btn ace-btn-ghost"
-                  style={{ color: inspectUser.status === 'Active' ? '#DC2626' : '#059669', fontSize: '13px' }}
-                >
-                  {inspectUser.status === 'Active' ? 'Deactivate Account' : 'Reactivate Account'}
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(inspectUser.id)}
+                    className="ace-btn ace-btn-ghost"
+                    style={{ color: inspectUser.status === 'Active' ? '#D97706' : '#059669', fontSize: '13px' }}
+                  >
+                    {inspectUser.status === 'Active' ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUser(inspectUser.id || inspectUser._id || inspectUser.email)}
+                    className="ace-btn ace-btn-ghost"
+                    style={{ color: '#DC2626', fontSize: '13px', fontWeight: 600 }}
+                  >
+                    Delete Account
+                  </button>
+                </div>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button
                     type="button"

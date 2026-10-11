@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import { isShipmentForCustomer } from '../data/shipments';
+import { useApp } from '../context/AppContext';
 import { 
   Package, 
   Truck, 
@@ -23,7 +24,12 @@ import {
   Check,
   FileCheck,
   X,
-  Calendar
+  Calendar,
+  Bell,
+  User,
+  Edit3,
+  Scale,
+  Send
 } from 'lucide-react';
 
 export default function CustomerDashboardView({ 
@@ -35,9 +41,54 @@ export default function CustomerDashboardView({
   activeRole = 'customer',
   setActiveRole
 }) {
+  const app = useApp ? useApp() : {};
+  const notifications = app.notifications || [];
+  const unreadNotifCount = app.unreadNotifCount || 0;
+  const handleMarkNotificationRead = app.handleMarkNotificationRead;
+  const handleMarkAllNotificationsRead = app.handleMarkAllNotificationsRead;
+  const setCurrentUser = app.setCurrentUser;
+
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [adminCustomerFilter, setAdminCustomerFilter] = useState('ALL');
+  const [showNotificationTray, setShowNotificationTray] = useState(false);
+
+  // Customer Profile View/Edit State
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || 'Kwame Mensah',
+    company: user?.company || 'Gold Coast Trading Ltd',
+    email: user?.email || 'k.mensah@goldcoasttrading.com',
+    phone: user?.phone || '+233 24 555 0192',
+    address: user?.address || 'Plot 14, Industrial Area, Ring Road Central',
+    city: user?.city || 'Accra',
+    country: user?.country || 'Ghana'
+  });
+  const [profileSuccessNotice, setProfileSuccessNotice] = useState('');
+
+  const handleSaveProfile = (e) => {
+    e.preventDefault();
+    const updatedUser = {
+      ...user,
+      name: profileForm.name,
+      company: profileForm.company,
+      phone: profileForm.phone,
+      address: profileForm.address,
+      city: profileForm.city,
+      country: profileForm.country
+    };
+    try {
+      localStorage.setItem('ace_current_user', JSON.stringify(updatedUser));
+      if (setCurrentUser) setCurrentUser(updatedUser);
+      setProfileSuccessNotice('Profile details updated successfully.');
+      setTimeout(() => {
+        setProfileSuccessNotice('');
+        setShowProfileModal(false);
+      }, 1500);
+    } catch (err) {
+      console.warn('Profile save notice:', err);
+    }
+  };
 
   // Customer Appointments state (persisted in localStorage)
   const [appointments, setAppointments] = useState(() => {
@@ -84,8 +135,6 @@ export default function CustomerDashboardView({
   };
 
   // Strict Customer Delivery Isolation:
-  // When activeRole is 'customer', the user can ONLY view records pertaining to their deliveries!
-  // All other users' consignments are strictly filtered out.
   const customerShipments = (activeRole === 'customer')
     ? shipments.filter(s => isShipmentForCustomer(s, user))
     : (adminCustomerFilter === 'ALL'
@@ -94,16 +143,24 @@ export default function CustomerDashboardView({
 
   // Dynamic Stats calculations derived strictly from the customer's records
   const totalShipments = customerShipments.length;
-  const inTransitCount = customerShipments.filter(s => s.status === 'IN TRANSIT').length;
+  const pendingVerificationCount = customerShipments.filter(s => s.status === 'PENDING_VERIFICATION').length;
+  const inTransitCount = customerShipments.filter(s => s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT').length;
+  const outForDeliveryCount = customerShipments.filter(s => s.status === 'OUT_FOR_DELIVERY').length;
   const deliveredCount = customerShipments.filter(s => s.status === 'DELIVERED').length;
-  const cancelledCount = customerShipments.filter(s => s.status === 'CANCELLED').length;
+  const cancelledCount = customerShipments.filter(s => s.status === 'CANCELLED' || s.status === 'REJECTED').length;
 
   // Active in-transit shipment belonging strictly to this customer
-  const activeInTransitShipment = customerShipments.find(s => s.status === 'IN TRANSIT') || null;
+  const activeInTransitShipment = customerShipments.find(s => s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT') || null;
 
   // Table filtering and search within this customer's records
   const filteredShipments = customerShipments.filter(s => {
-    const matchesFilter = filterStatus === 'ALL' || s.status === filterStatus;
+    let matchesFilter = true;
+    if (filterStatus === 'IN TRANSIT' || filterStatus === 'IN_TRANSIT') {
+      matchesFilter = s.status === 'IN TRANSIT' || s.status === 'IN_TRANSIT';
+    } else if (filterStatus !== 'ALL') {
+      matchesFilter = s.status === filterStatus;
+    }
+
     const matchesSearch = !searchTerm || 
       s.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -158,7 +215,41 @@ export default function CustomerDashboardView({
             </p>
           </div>
 
-          <div className="dashboard-header-actions" style={{ display: 'flex', gap: '10px' }}>
+          <div className="dashboard-header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Notification Center Bell */}
+            <button
+              onClick={() => setShowNotificationTray(!showNotificationTray)}
+              className="ace-btn ace-btn-secondary"
+              style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Shipment Status Notifications"
+            >
+              <Bell size={16} />
+              <span>Notifications</span>
+              {unreadNotifCount > 0 && (
+                <span style={{
+                  backgroundColor: '#EF4444',
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  borderRadius: '10px',
+                  padding: '1px 6px',
+                  lineHeight: 1
+                }}>
+                  {unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            {/* Profile Management */}
+            <button
+              onClick={() => setShowProfileModal(true)}
+              className="ace-btn ace-btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <User size={16} />
+              <span>Account Profile</span>
+            </button>
+
             <button
               onClick={() => setView('new-shipment')}
               className="ace-btn ace-btn-action"
@@ -168,6 +259,90 @@ export default function CustomerDashboardView({
             </button>
           </div>
         </div>
+
+        {/* NOTIFICATION CENTER TRAY */}
+        {showNotificationTray && (
+          <div className="ace-card" style={{
+            marginBottom: '24px',
+            backgroundColor: 'var(--color-surface)',
+            border: '2px solid var(--color-bright-action)',
+            borderRadius: '12px',
+            padding: '18px 20px',
+            boxShadow: 'var(--shadow-dropdown)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--color-border)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Bell size={18} color="var(--color-primary-blue)" />
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--color-primary-blue)', margin: 0 }}>
+                  Shipment Event Notifications ({notifications.length})
+                </h3>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {notifications.some(n => !n.read) && handleMarkAllNotificationsRead && (
+                  <button
+                    onClick={handleMarkAllNotificationsRead}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-bright-action)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Mark All as Read
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowNotificationTray(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {notifications.length === 0 ? (
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, padding: '10px 0' }}>
+                No shipment notifications yet. You will receive updates as your shipments are verified, dispatched, and delivered.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto' }}>
+                {notifications.map((n, i) => (
+                  <div
+                    key={n._id || i}
+                    style={{
+                      backgroundColor: n.read ? 'var(--color-very-light-blue)' : '#EFF6FF',
+                      border: n.read ? '1px solid var(--color-border)' : '1px solid #BFDBFE',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '13.5px', fontWeight: n.read ? 600 : 700, color: 'var(--color-primary-blue)' }}>
+                        {n.title}
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {n.message}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        {n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Recently'}
+                        {n.trackingNumber && <span> • Waybill: <strong>{n.trackingNumber}</strong></span>}
+                      </div>
+                    </div>
+
+                    {!n.read && handleMarkNotificationRead && (
+                      <button
+                        onClick={() => handleMarkNotificationRead(n._id)}
+                        className="ace-btn ace-btn-ghost ace-btn-sm"
+                        style={{ fontSize: '11px', padding: '3px 8px' }}
+                      >
+                        Dismiss
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ===================================================
             ADMIN INSPECTION BAR (Only visible if Admin is viewing Customer Portal)
@@ -208,127 +383,111 @@ export default function CustomerDashboardView({
         )}
 
         {/* ===================================================
-            SECTION 11 & 28: DASHBOARD STATS CARDS (DYNAMICALLY CALCULATED)
+            DASHBOARD STATS CARDS (5-METRIC REAL LIFECYCLE)
             =================================================== */}
-        <div className="ace-metrics-grid-2x2" style={{
+        <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))',
-          gap: '20px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
+          gap: '16px',
           marginBottom: '28px'
         }}>
-          {/* TOTAL SHIPMENTS */}
+          {/* 1. TOTAL SHIPMENTS */}
           <div className="ace-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  TOTAL SHIPMENTS
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  TOTAL BOOKINGS
                 </span>
-                <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-primary-blue)', marginTop: '4px', lineHeight: 1 }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--color-primary-blue)', marginTop: '4px', lineHeight: 1 }}>
                   {totalShipments}
                 </div>
               </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                backgroundColor: 'var(--color-light-blue)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-primary-blue)'
-              }}>
-                <Package size={20} strokeWidth={2.2} />
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'var(--color-light-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary-blue)' }}>
+                <Package size={18} />
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
-              {activeRole === 'customer' ? 'Your active & completed consignments' : 'Filtered customer consignments'}
+            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+              All your booked cargo
             </div>
           </div>
 
-          {/* IN TRANSIT */}
-          <div className="ace-card">
+          {/* 2. PENDING VERIFICATION */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #D97706' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  PENDING INTAKE
+                </span>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#D97706', marginTop: '4px', lineHeight: 1 }}>
+                  {pendingVerificationCount}
+                </div>
+              </div>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
+                <Scale size={18} />
+              </div>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#B45309', marginTop: '10px', fontWeight: 600 }}>
+              Awaiting staff verification
+            </div>
+          </div>
+
+          {/* 3. IN TRANSIT */}
+          <div className="ace-card" style={{ borderLeft: '3px solid var(--color-bright-action)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   IN TRANSIT
                 </span>
-                <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-bright-action)', marginTop: '4px', lineHeight: 1 }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--color-bright-action)', marginTop: '4px', lineHeight: 1 }}>
                   {inTransitCount}
                 </div>
               </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                backgroundColor: '#E0F2FE',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-bright-action)'
-              }}>
-                <Truck size={20} strokeWidth={2.2} />
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-bright-action)' }}>
+                <Truck size={18} />
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '12px', fontWeight: 500 }}>
-              Active live carrier telemetry
+            <div style={{ fontSize: '11.5px', color: '#0284c7', marginTop: '10px', fontWeight: 500 }}>
+              Active carrier linehaul
             </div>
           </div>
 
-          {/* DELIVERED */}
-          <div className="ace-card">
+          {/* 4. OUT FOR DELIVERY */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #0891B2' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#0E7490', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  OUT FOR DELIVERY
+                </span>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#0891B2', marginTop: '4px', lineHeight: 1 }}>
+                  {outForDeliveryCount}
+                </div>
+              </div>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#CFFAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0891B2' }}>
+                <Send size={18} />
+              </div>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#0891B2', marginTop: '10px', fontWeight: 500 }}>
+              Final mile courier en route
+            </div>
+          </div>
+
+          {/* 5. DELIVERED */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #10B981' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   DELIVERED
                 </span>
-                <div style={{ fontSize: '32px', fontWeight: 800, color: '#10B981', marginTop: '4px', lineHeight: 1 }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#10B981', marginTop: '4px', lineHeight: 1 }}>
                   {deliveredCount}
                 </div>
               </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                backgroundColor: '#ECFDF5',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#10B981'
-              }}>
-                <CheckCircle2 size={20} strokeWidth={2.2} />
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
+                <CheckCircle2 size={18} />
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#059669', marginTop: '12px', fontWeight: 500 }}>
-              100% verified POD receipts
-            </div>
-          </div>
-
-          {/* CANCELLED */}
-          <div className="ace-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  CANCELLED
-                </span>
-                <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--status-cancelled-color)', marginTop: '4px', lineHeight: 1 }}>
-                  {cancelledCount}
-                </div>
-              </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                backgroundColor: '#FEF2F2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--status-cancelled-color)'
-              }}>
-                <XCircle size={20} strokeWidth={2.2} />
-              </div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '12px' }}>
-              Refunded / voided
+            <div style={{ fontSize: '11.5px', color: '#059669', marginTop: '10px', fontWeight: 500 }}>
+              Completed consignments
             </div>
           </div>
         </div>
@@ -484,23 +643,30 @@ export default function CustomerDashboardView({
           <div className="dashboard-filter-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             {/* Status Tabs */}
             <div className="ace-filter-scroll" style={{ backgroundColor: 'var(--color-white)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '3px', display: 'flex', gap: '2px', maxWidth: '100%', overflowX: 'auto' }}>
-              {['ALL', 'IN TRANSIT', 'DELIVERED', 'PENDING'].map(status => (
+              {[
+                { id: 'ALL', label: 'ALL' },
+                { id: 'PENDING_VERIFICATION', label: 'PENDING INTAKE' },
+                { id: 'VERIFIED', label: 'VERIFIED' },
+                { id: 'IN TRANSIT', label: 'IN TRANSIT' },
+                { id: 'OUT_FOR_DELIVERY', label: 'OUT FOR DELIVERY' },
+                { id: 'DELIVERED', label: 'DELIVERED' }
+              ].map(tab => (
                 <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
+                  key={tab.id}
+                  onClick={() => setFilterStatus(tab.id)}
                   style={{
                     border: 'none',
                     borderRadius: '6px',
                     padding: '6px 12px',
                     fontSize: '12px',
-                    fontWeight: filterStatus === status ? 700 : 500,
-                    backgroundColor: filterStatus === status ? 'var(--color-light-blue)' : 'transparent',
-                    color: filterStatus === status ? 'var(--color-primary-blue)' : 'var(--text-secondary)',
+                    fontWeight: filterStatus === tab.id ? 700 : 500,
+                    backgroundColor: filterStatus === tab.id ? 'var(--color-light-blue)' : 'transparent',
+                    color: filterStatus === tab.id ? 'var(--color-primary-blue)' : 'var(--text-secondary)',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  {status}
+                  {tab.label}
                 </button>
               ))}
             </div>
@@ -804,6 +970,150 @@ export default function CustomerDashboardView({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ===================================================
+            ACCOUNT PROFILE MODAL (View & Edit Profile)
+            =================================================== */}
+        {showProfileModal && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(7, 42, 66, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px'
+          }}>
+            <div className="ace-card" style={{
+              maxWidth: 'min(500px, calc(100vw - 24px))',
+              width: '100%',
+              backgroundColor: 'var(--color-surface)',
+              borderRadius: '16px',
+              padding: 'clamp(16px, 4vw, 24px)',
+              boxShadow: 'var(--shadow-dropdown)',
+              maxHeight: '90vh',
+              overflowY: 'auto'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <User size={20} color="var(--color-primary-blue)" />
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary-blue)', margin: 0 }}>
+                    Customer Account Profile
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {profileSuccessNotice && (
+                <div style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', padding: '10px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '13px', fontWeight: 600 }}>
+                  {profileSuccessNotice}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveProfile}>
+                <div className="ace-form-group" style={{ marginBottom: '12px' }}>
+                  <label className="ace-label ace-label-required">Full Name</label>
+                  <input
+                    type="text"
+                    className="ace-input"
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="ace-form-group" style={{ marginBottom: '12px' }}>
+                  <label className="ace-label">Company / Trading Entity</label>
+                  <input
+                    type="text"
+                    className="ace-input"
+                    value={profileForm.company}
+                    onChange={(e) => setProfileForm({ ...profileForm, company: e.target.value })}
+                  />
+                </div>
+
+                <div className="ace-form-group" style={{ marginBottom: '12px' }}>
+                  <label className="ace-label">Email Address (Account ID)</label>
+                  <input
+                    type="email"
+                    className="ace-input"
+                    value={profileForm.email}
+                    disabled
+                    style={{ backgroundColor: 'var(--color-very-light-blue)', cursor: 'not-allowed' }}
+                  />
+                </div>
+
+                <div className="ace-form-group" style={{ marginBottom: '12px' }}>
+                  <label className="ace-label ace-label-required">Phone Number</label>
+                  <input
+                    type="tel"
+                    className="ace-input"
+                    value={profileForm.phone}
+                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="ace-form-group" style={{ marginBottom: '12px' }}>
+                  <label className="ace-label">Primary Street Address</label>
+                  <input
+                    type="text"
+                    className="ace-input"
+                    value={profileForm.address}
+                    onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '18px' }}>
+                  <div className="ace-form-group">
+                    <label className="ace-label">City</label>
+                    <input
+                      type="text"
+                      className="ace-input"
+                      value={profileForm.city}
+                      onChange={(e) => setProfileForm({ ...profileForm, city: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="ace-form-group">
+                    <label className="ace-label">Country</label>
+                    <input
+                      type="text"
+                      className="ace-input"
+                      value={profileForm.country}
+                      onChange={(e) => setProfileForm({ ...profileForm, country: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--color-border)', paddingTop: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileModal(false)}
+                    className="ace-btn ace-btn-ghost"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="ace-btn ace-btn-primary"
+                  >
+                    <Check size={16} />
+                    <span>Save Profile Changes</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

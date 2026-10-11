@@ -26,6 +26,16 @@ import {
   Fingerprint
 } from 'lucide-react';
 
+const getApiBase = () => {
+  if (typeof window !== 'undefined') {
+    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || '';
+};
+
 // Helper to retrieve all registered customers (merging pre-configured accounts with localStorage)
 export function getRegisteredCustomers() {
   let stored = [];
@@ -285,11 +295,9 @@ export default function LoginView({
       try { localStorage.removeItem('ace_remembered_email'); } catch {}
     }
 
-    // 1. Attempt Backend Express API (port 5000)
+    // 1. Attempt Backend Express API
     try {
-      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:5000/api/auth/login'
-        : '/api/auth/login';
+      const backendUrl = `${getApiBase()}/api/auth/login`;
 
       const res = await fetch(backendUrl, {
         method: 'POST',
@@ -332,129 +340,14 @@ export default function LoginView({
           station: selectedPortal === 'staff' ? staffStation : undefined
         });
         return;
-      } else if (res.status === 401 || res.status === 400) {
-        // High-availability check for local accounts before displaying error
-        if (selectedPortal === 'customer') {
-          const registeredCustomers = getRegisteredCustomers();
-          const localCust = registeredCustomers.find(c => c.email?.trim().toLowerCase() === cleanEmail);
-          if (localCust && localCust.loginPassword === cleanPassword) {
-            setIsSubmitting(false);
-            onLoginSuccess('customer', localCust);
-            return;
-          }
-        } else if (selectedPortal === 'staff') {
-          const registeredStaff = getRegisteredStaff();
-          const localStaff = registeredStaff.find(s => s.email?.trim().toLowerCase() === cleanEmail);
-          if (localStaff && localStaff.loginPassword === cleanPassword) {
-            setIsSubmitting(false);
-            onLoginSuccess('staff', { ...localStaff, station: staffStation });
-            return;
-          }
-        } else if (selectedPortal === 'admin') {
-          if (cleanEmail === 'd.sterling@acelogistics.com' && cleanPassword === 'AdminSecurePass#2026' && adminToken.trim() === 'ACE-SEC-2026') {
-            setIsSubmitting(false);
-            onLoginSuccess('admin', {
-              name: 'Derek Sterling',
-              email: 'd.sterling@acelogistics.com',
-              role: 'admin',
-              title: 'Executive Vice President of Operations',
-              clearanceLevel: 'Level 5 (Full Authority)'
-            });
-            return;
-          }
-        }
-
+      } else {
         setIsSubmitting(false);
-        setPasswordError(data?.message || 'Invalid email or password credentials.');
+        setPasswordError(data?.message || 'Invalid email or password credentials. Authentication rejected.');
         return;
       }
-    } catch {
-      // Backend unavailable or network error: seamlessly proceed to local verification below
-    }
-
-    // 2. High-Availability Fallback Verification
-    if (selectedPortal === 'admin') {
-      if (cleanEmail === 'd.sterling@acelogistics.com') {
-        if (cleanPassword !== 'AdminSecurePass#2026') {
-          setIsSubmitting(false);
-          setPasswordError('Incorrect Administrator Passkey. Access rejected.');
-          return;
-        }
-        if (adminToken.trim() !== 'ACE-SEC-2026') {
-          setIsSubmitting(false);
-          setPasswordError('Invalid Hardware Security Token. Security clearance failed.');
-          return;
-        }
-        setIsSubmitting(false);
-        onLoginSuccess('admin', {
-          name: 'Derek Sterling',
-          email: 'd.sterling@acelogistics.com',
-          role: 'admin',
-          title: 'Executive Vice President of Operations',
-          clearanceLevel: 'Level 5 (Full Authority)'
-        });
-        return;
-      }
-
-      const matchedAdmin = USERS_LIST.find(u => u.email?.trim().toLowerCase() === cleanEmail && u.role?.toLowerCase() === 'admin');
-      if (matchedAdmin) {
-        if (matchedAdmin.loginPassword && matchedAdmin.loginPassword !== cleanPassword) {
-          setIsSubmitting(false);
-          setPasswordError('Incorrect Administrator Passkey.');
-          return;
-        }
-        setIsSubmitting(false);
-        onLoginSuccess('admin', { ...matchedAdmin, role: 'admin' });
-        return;
-      }
-
+    } catch (err) {
       setIsSubmitting(false);
-      setPasswordError('Unauthorized Administrator Email. Please sign in as Derek Sterling or click Quick Demo Fill.');
-      return;
-    }
-
-    if (selectedPortal === 'staff') {
-      const registeredStaff = getRegisteredStaff();
-      const matchedStaff = registeredStaff.find(s => s.email?.trim().toLowerCase() === cleanEmail);
-
-      if (!matchedStaff) {
-        setIsSubmitting(false);
-        setPasswordError('Access Denied: Unrecognized staff account. Only authorized operations personnel can access the Dispatch Console. Try clicking a Quick Demo Fill button.');
-        return;
-      }
-
-      if (matchedStaff.loginPassword && matchedStaff.loginPassword !== cleanPassword) {
-        setIsSubmitting(false);
-        setPasswordError('Incorrect operational passkey assigned to your staff profile.');
-        return;
-      }
-
-      setIsSubmitting(false);
-      onLoginSuccess('staff', {
-        ...matchedStaff,
-        station: staffStation
-      });
-      return;
-    }
-
-    if (selectedPortal === 'customer') {
-      const registeredCustomers = getRegisteredCustomers();
-      let matchedCustomer = registeredCustomers.find(c => c.email?.trim().toLowerCase() === cleanEmail);
-
-      if (!matchedCustomer) {
-        setIsSubmitting(false);
-        setPasswordError('Account not found. Click "Sign Up" above to register or click a Quick Demo Fill account.');
-        return;
-      }
-
-      if (matchedCustomer.loginPassword && matchedCustomer.loginPassword !== cleanPassword) {
-        setIsSubmitting(false);
-        setPasswordError('Incorrect password. Please verify your credentials and try again.');
-        return;
-      }
-
-      setIsSubmitting(false);
-      onLoginSuccess('customer', matchedCustomer);
+      setPasswordError(`Cannot reach backend authentication server: ${err.message}. Please ensure backend is running.`);
       return;
     }
   };
@@ -485,9 +378,7 @@ export default function LoginView({
 
     // 1. Register with Backend API (MongoDB)
     try {
-      const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:5000/api/auth/register'
-        : '/api/auth/register';
+      const backendUrl = `${getApiBase()}/api/auth/register`;
 
       const res = await fetch(backendUrl, {
         method: 'POST',
@@ -518,8 +409,9 @@ export default function LoginView({
       }
 
       if (!res.ok) {
-        // For unexpected server response (e.g. 500 or 404 proxy), fall through to local high-availability registration
-        throw new Error(data?.message || 'Backend registration temporary fallback');
+        setIsSubmitting(false);
+        setPasswordError(data?.message || 'Failed to save customer account to MongoDB Atlas. Please try again.');
+        return;
       }
 
       if (data?.token) {
@@ -527,23 +419,21 @@ export default function LoginView({
       }
 
       const newCustomer = {
-        id: data?.user?.id || data?.user?._id || `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
-        name: fullName,
+        id: data?.user?.id || data?.user?._id,
+        _id: data?.user?._id || data?.user?.id,
+        name: data?.user?.name || fullName,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: cleanEmail,
-        loginPassword: signupPassword,
-        company: `${firstName.trim() || 'Customer'}'s Commercial Enterprise`,
-        country,
-        phone: phoneNumber.trim(),
-        items: items.trim(),
+        company: data?.user?.company || `${firstName.trim() || 'Customer'}'s Commercial Enterprise`,
+        country: data?.user?.country || country,
+        phone: data?.user?.phone || phoneNumber.trim(),
+        items: data?.user?.items || items.trim(),
         role: 'customer',
         token: data?.token,
         status: 'Active',
         registeredAt: new Date().toISOString()
       };
-
-      saveRegisteredCustomer(newCustomer);
 
       if (rememberMe) {
         try { localStorage.setItem('ace_remembered_email', cleanEmail); } catch {}
@@ -552,32 +442,10 @@ export default function LoginView({
       setIsSubmitting(false);
       onLoginSuccess('customer', newCustomer);
       return;
-    } catch {
-      // Offline fallback: save locally and login
-      const fallbackCustomer = {
-        id: `CUST-${Math.floor(1000 + Math.random() * 9000)}`,
-        name: fullName,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: cleanEmail,
-        loginPassword: signupPassword,
-        company: `${firstName.trim() || 'Customer'}'s Commercial Enterprise`,
-        country,
-        phone: phoneNumber.trim(),
-        items: items.trim(),
-        role: 'customer',
-        status: 'Active',
-        registeredAt: new Date().toISOString()
-      };
-
-      saveRegisteredCustomer(fallbackCustomer);
-
-      if (rememberMe) {
-        try { localStorage.setItem('ace_remembered_email', cleanEmail); } catch {}
-      }
-
+    } catch (err) {
       setIsSubmitting(false);
-      onLoginSuccess('customer', fallbackCustomer);
+      setPasswordError(`Cannot connect to MongoDB Atlas backend: ${err.message}. Please check connection.`);
+      return;
     }
   };
 
@@ -643,9 +511,7 @@ export default function LoginView({
     } else {
       // Register SSO customer with MongoDB backend API
       try {
-        const backendUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-          ? 'http://localhost:5000/api/auth/register'
-          : '/api/auth/register';
+        const backendUrl = `${getApiBase()}/api/auth/register`;
 
         const res = await fetch(backendUrl, {
           method: 'POST',

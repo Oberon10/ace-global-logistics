@@ -13,6 +13,8 @@ export default function StaffDashboardPage() {
     navigate, 
     shipments, 
     handleUpdateShipmentStatus, 
+    handleVerifyShipment,
+    handleShipmentCreated,
     handleSelectShipment, 
     setActiveRole,
     theme,
@@ -45,6 +47,8 @@ export default function StaffDashboardPage() {
     <StaffDashboardView 
       shipments={shipments} 
       onUpdateShipmentStatus={handleUpdateShipmentStatus} 
+      onVerifyShipment={handleVerifyShipment}
+      onCreateShipment={handleShipmentCreated}
       onSelectShipment={handleSelectShipment} 
       setView={navigate} 
       activeRole={activeRole} 
