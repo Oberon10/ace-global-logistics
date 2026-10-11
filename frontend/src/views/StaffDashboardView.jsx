@@ -107,7 +107,7 @@ export default function StaffDashboardView({
 
     const st = getStatusKey(s);
     if (activeTab === 'ALL') return true;
-    if (activeTab === 'PENDING_VERIFICATION') return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    if (activeTab === 'PENDING_VERIFICATION') return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
     if (activeTab === 'VERIFIED') return st === 'VERIFIED';
     if (activeTab === 'READY_FOR_DISPATCH') return st === 'READY_FOR_DISPATCH';
     if (activeTab === 'IN_TRANSIT') return st === 'IN_TRANSIT';
@@ -274,7 +274,7 @@ export default function StaffDashboardView({
   // Tab counts
   const countPending = shipments.filter(s => {
     const st = getStatusKey(s);
-    return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
   }).length;
   const countVerified = shipments.filter(s => getStatusKey(s) === 'VERIFIED').length;
   const countReady = shipments.filter(s => getStatusKey(s) === 'READY_FOR_DISPATCH').length;
@@ -382,12 +382,12 @@ export default function StaffDashboardView({
         }}>
           {[
             { id: 'ALL', label: 'All Consignments', count: shipments.length },
-            { id: 'PENDING_VERIFICATION', label: 'Pending Verification', count: countPending, highlight: countPending > 0 },
+            { id: 'PENDING_VERIFICATION', label: 'Pending Shipments', count: countPending, highlight: countPending > 0 },
             { id: 'VERIFIED', label: 'Verified', count: countVerified },
             { id: 'READY_FOR_DISPATCH', label: 'Ready for Dispatch', count: countReady },
-            { id: 'IN_TRANSIT', label: 'In Transit', count: countTransit },
+            { id: 'IN_TRANSIT', label: 'In Transit Shipments', count: countTransit },
             { id: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', count: countOut },
-            { id: 'DELIVERED', label: 'Delivered', count: countDelivered },
+            { id: 'DELIVERED', label: 'Delivered Shipments', count: countDelivered },
             { id: 'EXCEPTIONS', label: 'Exceptions' }
           ].map(tab => (
             <button
@@ -503,8 +503,8 @@ export default function StaffDashboardView({
                       Next Operational Action
                     </div>
 
-                    {/* 1. If PENDING_VERIFICATION */}
-                    {(getStatusKey(activeShipment) === 'PENDING_VERIFICATION' || getStatusKey(activeShipment) === 'PENDING_INTAKE' || getStatusKey(activeShipment) === 'ORDER_CREATED') && (
+                    {/* 1. If PENDING */}
+                    {(getStatusKey(activeShipment) === 'PENDING' || getStatusKey(activeShipment) === 'PENDING_VERIFICATION' || getStatusKey(activeShipment) === 'PENDING_INTAKE' || getStatusKey(activeShipment) === 'ORDER_CREATED') && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
                           This package was booked as a <strong>Shipment Request</strong>. Staff must physically weigh the package and verify its dimensions before it can proceed into the delivery network.
@@ -589,22 +589,38 @@ export default function StaffDashboardView({
                     {getStatusKey(activeShipment) === 'IN_TRANSIT' ? (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          Consignment is currently in transit. When package reaches destination hub, dispatch final-mile courier.
+                          Consignment is currently in active transit. Confirm delivery upon destination arrival or dispatch final-mile courier.
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => handleTransition(
-                            'OUT_FOR_DELIVERY',
-                            `${activeShipment.receiver?.city || activeShipment.destination} Delivery Courier Unit`,
-                            'Package out for final delivery courier handover.'
-                          )}
-                          disabled={isSubmitting}
-                          className="ace-btn ace-btn-action"
-                          style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                        >
-                          <Send size={18} />
-                          <span>Mark Out for Delivery</span>
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleTransition(
+                              'DELIVERED',
+                              `${activeShipment.destination} (Destination Handover)`,
+                              'Delivered successfully to consignee. Verified by terminal staff.'
+                            )}
+                            disabled={isSubmitting}
+                            className="ace-btn"
+                            style={{ flex: 1, minWidth: '180px', height: '44px', backgroundColor: '#059669', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          >
+                            <CheckCircle2 size={18} />
+                            <span>Confirm Delivery (Delivered)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTransition(
+                              'OUT_FOR_DELIVERY',
+                              `${activeShipment.receiver?.city || activeShipment.destination} Delivery Courier Unit`,
+                              'Package out for final delivery courier handover.'
+                            )}
+                            disabled={isSubmitting}
+                            className="ace-btn ace-btn-action"
+                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          >
+                            <Send size={18} />
+                            <span>Mark Out for Delivery</span>
+                          </button>
+                        </div>
                       </div>
                     ) : null}
 

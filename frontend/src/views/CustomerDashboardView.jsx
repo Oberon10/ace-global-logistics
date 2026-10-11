@@ -150,7 +150,7 @@ export default function CustomerDashboardView({
   const totalShipments = customerShipments.length;
   const pendingVerificationCount = customerShipments.filter(s => {
     const st = normalizeStatus(s.status, s.statusRaw);
-    return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
   }).length;
   const inTransitCount = customerShipments.filter(s => {
     const st = normalizeStatus(s.status, s.statusRaw);
@@ -182,8 +182,8 @@ export default function CustomerDashboardView({
     const flt = (filterStatus || 'ALL').toUpperCase().trim().replace(/\s+/g, '_');
 
     if (flt !== 'ALL') {
-      if (flt === 'PENDING_VERIFICATION' || flt === 'PENDING_INTAKE') {
-        matchesFilter = (st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED');
+      if (flt === 'PENDING' || flt === 'PENDING_VERIFICATION' || flt === 'PENDING_INTAKE') {
+        matchesFilter = (st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED');
       } else {
         matchesFilter = (st === flt);
       }
