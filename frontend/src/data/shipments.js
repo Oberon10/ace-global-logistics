@@ -171,6 +171,11 @@ export function isShipmentForCustomer(shipment, user) {
   const userEmail = (user.email || '').trim().toLowerCase();
   const userName = (user.name || '').trim().toLowerCase();
   const userCompany = (user.company || '').trim().toLowerCase();
+  const userId = String(user._id || user.id || '').trim();
+
+  // 0. Direct ObjectId match
+  const senderId = typeof shipment.sender === 'string' ? shipment.sender : String(shipment.sender?._id || shipment.sender?.id || '');
+  if (userId && senderId && userId === senderId) return true;
 
   // 1. Direct customer property on shipment
   const cust = (shipment.customer || '').trim().toLowerCase();

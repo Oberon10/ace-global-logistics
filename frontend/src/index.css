@@ -358,6 +358,36 @@ button, input, select, textarea {
   border-color: var(--status-cancelled-border);
 }
 
+.ace-badge-verified {
+  background-color: #CCFBF1;
+  color: #0F766E;
+  border-color: #99F6E4;
+}
+
+.ace-badge-ready {
+  background-color: #E0E7FF;
+  color: #3730A3;
+  border-color: #C7D2FE;
+}
+
+.ace-badge-out {
+  background-color: #F3E8FF;
+  color: #6B21A8;
+  border-color: #E9D5FF;
+}
+
+.ace-badge-hold {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border-color: #FDE68A;
+}
+
+.ace-badge-rejected {
+  background-color: #FFE4E6;
+  color: #9F1239;
+  border-color: #FECDD3;
+}
+
 .ace-badge-neutral {
   background-color: #f1f5f9;
   color: #475569;
