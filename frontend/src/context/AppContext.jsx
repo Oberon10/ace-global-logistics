@@ -677,6 +677,7 @@ export function AppProvider({ children }) {
     try {
       localStorage.removeItem('ace_auth_role');
       localStorage.removeItem('ace_current_user');
+      localStorage.removeItem('ace_auth_token');
     } catch {
       // ignore
     }

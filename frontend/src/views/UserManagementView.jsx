@@ -86,14 +86,16 @@ export default function UserManagementView({
   }, []);
 
   
-  // Password visibility state: set of user ids currently revealed
-  const [revealedPasswords, setRevealedPasswords] = useState(new Set());
-  const [showAllPasswords, setShowAllPasswords] = useState(false);
-
   // Modals state
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [inspectUser, setInspectUser] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
+
+  // Secure Password Reset State (Admin Privilege)
+  const [resetModalUser, setResetModalUser] = useState(null);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetNotice, setResetNotice] = useState({ type: '', text: '' });
 
   // New User Form State
   const [newUserName, setNewUserName] = useState('');
@@ -110,27 +112,39 @@ export default function UserManagementView({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // Toggle single user password visibility
-  const togglePasswordVisibility = (id) => {
-    setRevealedPasswords(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  // Handle Secure Password Reset Submission
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetModalUser) return;
+    if (!resetNewPassword || resetNewPassword.trim().length < 6) {
+      setResetNotice({ type: 'error', text: 'Password must be at least 6 characters long.' });
+      return;
+    }
 
-  // Toggle all passwords
-  const handleToggleAllPasswords = () => {
-    if (showAllPasswords) {
-      setRevealedPasswords(new Set());
-      setShowAllPasswords(false);
-    } else {
-      setRevealedPasswords(new Set(users.map(u => u.id)));
-      setShowAllPasswords(true);
+    setIsResetting(true);
+    setResetNotice({ type: '', text: '' });
+    try {
+      const targetId = resetModalUser._id || resetModalUser.id || resetModalUser.email;
+      const res = await fetch(`${getApiBase()}/api/auth/users/${encodeURIComponent(targetId)}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: resetNewPassword.trim() })
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setResetNotice({ type: 'success', text: `Password successfully updated and securely hashed for ${resetModalUser.email}.` });
+        setTimeout(() => {
+          setResetModalUser(null);
+          setResetNewPassword('');
+          setResetNotice({ type: '', text: '' });
+        }, 1600);
+      } else {
+        setResetNotice({ type: 'error', text: data?.message || 'Failed to reset password.' });
+      }
+    } catch (err) {
+      setResetNotice({ type: 'error', text: 'Network error resetting password: ' + err.message });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -386,32 +400,12 @@ export default function UserManagementView({
                 <span style={{ fontSize: '11px', color: '#94A3B8' }}>• Executive Clearance Level 1</span>
               </div>
               <p style={{ margin: 0, fontSize: '13.5px', color: '#E2E8F0', lineHeight: 1.4 }}>
-                As an <strong>Administrator</strong>, you possess the exclusive administrative privilege to view, audit, and provision login credentials for all <strong>Staff Dispatchers</strong> and <strong>Customer Accounts</strong>.
+                As an <strong>Administrator</strong>, you possess executive oversight to audit user access, manage operational accounts, and securely reset passwords. All passwords are encrypted with one-way cryptographic hashing (Bcrypt) and cannot be recovered in plaintext.
               </p>
             </div>
           </div>
 
           <div className="admin-banner-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              onClick={handleToggleAllPasswords}
-              style={{
-                backgroundColor: showAllPasswords ? '#DC2626' : 'rgba(255, 255, 255, 0.12)',
-                border: '1px solid rgba(255, 255, 255, 0.25)',
-                color: '#FFFFFF',
-                borderRadius: '6px',
-                padding: '7px 14px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              {showAllPasswords ? <EyeOff size={15} /> : <Eye size={15} />}
-              <span>{showAllPasswords ? 'Mask All Passwords' : 'Show All Passwords'}</span>
-            </button>
             <button
               onClick={() => setAddModalOpen(true)}
               className="ace-btn ace-btn-action"
@@ -534,8 +528,8 @@ export default function UserManagementView({
                 <th>Login Email (Clearance)</th>
                 <th>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <KeyRound size={13} color="var(--color-bright-action)" />
-                    <span>Login Password (Admin View)</span>
+                    <Lock size={13} color="#0284C7" />
+                    <span>Password Security</span>
                   </div>
                 </th>
                 <th>Department / Organization</th>
@@ -553,8 +547,6 @@ export default function UserManagementView({
                 </tr>
               ) : (
                 filteredUsers.map(u => {
-                  const isPasswordRevealed = showAllPasswords || revealedPasswords.has(u.id);
-
                   return (
                     <tr key={u.id}>
                       {/* Name & Phone */}
@@ -627,65 +619,53 @@ export default function UserManagementView({
                         </div>
                       </td>
 
-                      {/* Login Password with Show/Hide Toggle */}
+                      {/* Password Security Status & Reset */}
                       <td>
                         <div style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '8px',
                           backgroundColor: 'var(--color-surface)',
-                          padding: '4px 8px',
+                          padding: '4px 10px',
                           borderRadius: '6px',
                           border: '1px solid var(--color-border)'
                         }}>
                           <span style={{
                             fontFamily: 'monospace',
-                            fontSize: '12.5px',
-                            fontWeight: isPasswordRevealed ? 700 : 500,
-                            color: isPasswordRevealed ? '#B45309' : 'var(--text-muted)',
-                            letterSpacing: isPasswordRevealed ? 'normal' : '2px',
-                            minWidth: '130px'
+                            fontSize: '12px',
+                            color: 'var(--text-muted)',
+                            letterSpacing: '2px'
                           }}>
-                            {isPasswordRevealed ? (u.loginPassword || 'StaffSecurePass#2026') : '••••••••••••'}
+                            ••••••••••••
                           </span>
 
-                          {/* Eye Toggle */}
+                          {/* Reset Password Action Button */}
                           <button
                             type="button"
-                            onClick={() => togglePasswordVisibility(u.id)}
-                            title={isPasswordRevealed ? "Hide Password" : "View Password (Admin Privilege)"}
+                            onClick={() => {
+                              setResetNewPassword('');
+                              setResetNotice({ type: '', text: '' });
+                              setResetModalUser(u);
+                            }}
+                            title="Securely reset password (hashed with Bcrypt)"
                             style={{
-                              background: 'none',
-                              border: 'none',
+                              backgroundColor: '#F0F9FF',
+                              border: '1px solid #BAE6FD',
+                              color: '#0284C7',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              fontWeight: 700,
                               cursor: 'pointer',
-                              padding: '2px',
-                              color: isPasswordRevealed ? 'var(--color-bright-action)' : 'var(--text-muted)',
                               display: 'flex',
-                              alignItems: 'center'
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease'
                             }}
                           >
-                            {isPasswordRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                            <KeyRound size={11} />
+                            <span>Reset</span>
                           </button>
-
-                          {/* Copy Password */}
-                          {isPasswordRevealed && (
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(u.loginPassword || 'StaffSecurePass#2026', `pass-${u.id}`)}
-                              title="Copy password"
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                padding: '2px',
-                                color: copiedField === `pass-${u.id}` ? '#10B981' : 'var(--text-muted)',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              {copiedField === `pass-${u.id}` ? <Check size={13} /> : <Copy size={13} />}
-                            </button>
-                          )}
                         </div>
                       </td>
 
@@ -828,22 +808,28 @@ export default function UserManagementView({
                   </div>
                 </div>
 
-                {/* Login Password */}
+                {/* Password Security Status & Reset */}
                 <div style={{ backgroundColor: 'var(--color-surface)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                    System Password / Login Passphrase
+                    Password Security Status
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 700, color: '#B45309' }}>
-                      {inspectUser.loginPassword || 'StaffSecurePass#2026'}
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Lock size={14} color="#059669" />
+                      <span>Encrypted & Hashed (Bcrypt)</span>
                     </span>
                     <button
-                      onClick={() => handleCopy(inspectUser.loginPassword || 'StaffSecurePass#2026', 'modal-password')}
+                      type="button"
+                      onClick={() => {
+                        setResetNewPassword('');
+                        setResetNotice({ type: '', text: '' });
+                        setResetModalUser(inspectUser);
+                      }}
                       className="ace-btn ace-btn-ghost ace-btn-sm"
-                      style={{ fontSize: '11.5px', gap: '4px' }}
+                      style={{ fontSize: '11.5px', gap: '4px', color: '#0284C7', border: '1px solid #BAE6FD' }}
                     >
-                      {copiedField === 'modal-password' ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
-                      <span>{copiedField === 'modal-password' ? 'Copied' : 'Copy Password'}</span>
+                      <KeyRound size={13} />
+                      <span>Reset Password</span>
                     </button>
                   </div>
                 </div>
@@ -905,7 +891,7 @@ export default function UserManagementView({
                   <button
                     type="button"
                     onClick={() => {
-                      const dossierText = `User: ${inspectUser.name}\nRole: ${inspectUser.role}\nEmail: ${inspectUser.email}\nPassword: ${inspectUser.loginPassword || 'StaffSecurePass#2026'}\nPhone: ${inspectUser.phone}\nDepartment: ${inspectUser.department}\nAccess Scope: ${inspectUser.accessScope}`;
+                      const dossierText = `User: ${inspectUser.name}\nRole: ${inspectUser.role}\nEmail: ${inspectUser.email}\nPassword Status: Securely Hashed (Bcrypt)\nPhone: ${inspectUser.phone}\nDepartment: ${inspectUser.department}\nAccess Scope: ${inspectUser.accessScope}`;
                       handleCopy(dossierText, 'modal-all');
                     }}
                     className="ace-btn ace-btn-secondary"
@@ -976,15 +962,15 @@ export default function UserManagementView({
                 <div className="ace-form-group">
                   <label className="ace-label ace-label-required">Initial Login Password</label>
                   <input
-                    type="text"
+                    type="password"
                     className="ace-input"
-                    placeholder="e.g. StaffSecurePass#2026"
+                    placeholder="Min 6 characters"
                     value={newUserPassword}
                     onChange={e => setNewUserPassword(e.target.value)}
                     required
                   />
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Admin clearance allows you to record this password for credential tracking.
+                    Password is encrypted with Bcrypt before persistence in MongoDB Atlas.
                   </div>
                 </div>
 
@@ -1029,6 +1015,103 @@ export default function UserManagementView({
                   </button>
                   <button type="submit" className="ace-btn ace-btn-action">
                     Create & Save Credentials
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ===================================================
+            MODAL: SECURE PASSWORD RESET (ADMIN PRIVILEGE)
+            =================================================== */}
+        {resetModalUser && (
+          <div className="ace-modal-backdrop" onClick={() => !isResetting && setResetModalUser(null)}>
+            <div className="ace-modal" onClick={e => e.stopPropagation()} style={{ padding: 'clamp(16px, 4vw, 28px)', maxWidth: 'min(460px, calc(100vw - 24px))', width: '100%', boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284C7' }}>
+                    <KeyRound size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '17px', color: 'var(--color-primary-blue)', fontWeight: 800, margin: 0 }}>
+                      Reset User Password
+                    </h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
+                      Assign a new securely hashed password for {resetModalUser.name}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => !isResetting && setResetModalUser(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ backgroundColor: 'var(--color-surface)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--color-border)', marginBottom: '16px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Target Account:</span>
+                  <strong>{resetModalUser.name}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Login Email:</span>
+                  <span style={{ fontFamily: 'monospace' }}>{resetModalUser.email}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Role Clearance:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--color-primary-blue)' }}>{resetModalUser.role}</span>
+                </div>
+              </div>
+
+              {resetNotice.text && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  marginBottom: '14px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  backgroundColor: resetNotice.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+                  color: resetNotice.type === 'success' ? '#065F46' : '#991B1B',
+                  border: `1px solid ${resetNotice.type === 'success' ? '#A7F3D0' : '#FECACA'}`
+                }}>
+                  {resetNotice.text}
+                </div>
+              )}
+
+              <form onSubmit={handleResetPasswordSubmit}>
+                <div className="ace-form-group" style={{ marginBottom: '18px' }}>
+                  <label className="ace-label ace-label-required">New Temporary or Permanent Password</label>
+                  <input
+                    type="password"
+                    className="ace-input"
+                    placeholder="Min 6 characters (e.g. SecurePass#2026)"
+                    value={resetNewPassword}
+                    onChange={e => setResetNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    autoFocus
+                  />
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    The password will be hashed using Bcrypt before storage in MongoDB. Original passwords can never be recovered.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setResetModalUser(null)}
+                    className="ace-btn ace-btn-ghost"
+                    disabled={isResetting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="ace-btn ace-btn-action"
+                    disabled={isResetting || !resetNewPassword || resetNewPassword.length < 6}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    {isResetting ? <RefreshCw size={14} className="animate-spin" /> : <Lock size={14} />}
+                    <span>{isResetting ? 'Hashing & Saving...' : 'Confirm & Save Password'}</span>
                   </button>
                 </div>
               </form>
