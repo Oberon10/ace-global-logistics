@@ -66,19 +66,62 @@ export default function AdminDashboardView({
 
   const getStatusKey = (s) => (s?.statusRaw || s?.status || '').toUpperCase().trim().replace(/\s+/g, '_');
 
+  const countPending = shipments.filter(s => {
+    const st = getStatusKey(s);
+    return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+  }).length;
+  const countTransit = shipments.filter(s => getStatusKey(s) === 'IN_TRANSIT').length;
+  const countOut = shipments.filter(s => getStatusKey(s) === 'OUT_FOR_DELIVERY').length;
+  const countDelivered = shipments.filter(s => getStatusKey(s) === 'DELIVERED').length;
+
   const statusCounts = adminStats?.shipments?.byStatus || {
-    PENDING_VERIFICATION: shipments.filter(s => {
-      const st = getStatusKey(s);
-      return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
-    }).length,
+    PENDING_INTAKE: countPending,
+    PENDING_VERIFICATION: countPending,
     VERIFIED: shipments.filter(s => getStatusKey(s) === 'VERIFIED').length,
     READY_FOR_DISPATCH: shipments.filter(s => getStatusKey(s) === 'READY_FOR_DISPATCH').length,
-    IN_TRANSIT: shipments.filter(s => getStatusKey(s) === 'IN_TRANSIT').length,
-    OUT_FOR_DELIVERY: shipments.filter(s => getStatusKey(s) === 'OUT_FOR_DELIVERY').length,
-    DELIVERED: shipments.filter(s => getStatusKey(s) === 'DELIVERED').length,
+    IN_TRANSIT: countTransit,
+    OUT_FOR_DELIVERY: countOut,
+    DELIVERED: countDelivered,
     CANCELLED: shipments.filter(s => getStatusKey(s) === 'CANCELLED').length,
     REJECTED: shipments.filter(s => getStatusKey(s) === 'REJECTED').length
   };
+
+  // Compile real-time recent shipment activity audit trail across MongoDB
+  const recentActivities = [];
+  shipments.forEach(s => {
+    if (Array.isArray(s.trackingHistory) && s.trackingHistory.length > 0) {
+      s.trackingHistory.forEach((h, idx) => {
+        recentActivities.push({
+          id: `${s.trackingNumber}-${idx}-${h.timestamp || idx}`,
+          trackingNumber: s.trackingNumber,
+          shipment: s,
+          status: h.status,
+          previousStatus: h.previousStatus,
+          action: h.action || (h.previousStatus ? `${h.previousStatus.replace(/_/g, ' ')} → ${h.status.replace(/_/g, ' ')}` : `Stage: ${h.status.replace(/_/g, ' ')}`),
+          updatedBy: h.updatedBy || 'Terminal Staff',
+          changedByRole: h.changedByRole || 'STAFF',
+          timestamp: h.timestamp ? new Date(h.timestamp) : new Date(s.createdAt || s.createdDate || Date.now()),
+          note: h.note || h.description || '',
+          location: h.location || s.currentLocation || ''
+        });
+      });
+    } else {
+      recentActivities.push({
+        id: `${s.trackingNumber}-created`,
+        trackingNumber: s.trackingNumber,
+        shipment: s,
+        status: s.status,
+        action: 'Booking Created',
+        updatedBy: s.sender?.name || s.customer || 'Customer',
+        changedByRole: 'CUSTOMER',
+        timestamp: new Date(s.createdAt || s.createdDate || Date.now()),
+        note: `Consignment booked: ${s.origin} → ${s.destination}`,
+        location: s.origin || ''
+      });
+    }
+  });
+
+  recentActivities.sort((a, b) => b.timestamp - a.timestamp);
 
   const usersCount = adminStats?.users || {
     total: 8,
@@ -97,8 +140,9 @@ export default function AdminDashboardView({
   const filteredShipments = shipments.filter(s => {
     const st = getStatusKey(s);
     if (filterMode === 'ALL') return true;
-    if (filterMode === 'PENDING_VERIFICATION') return st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
-    if (filterMode === 'VERIFIED') return st === 'VERIFIED';
+    if (filterMode === 'PENDING' || filterMode === 'PENDING_INTAKE' || filterMode === 'PENDING_VERIFICATION') {
+      return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    }
     if (filterMode === 'IN_TRANSIT') return st === 'IN_TRANSIT';
     if (filterMode === 'OUT_FOR_DELIVERY') return st === 'OUT_FOR_DELIVERY';
     if (filterMode === 'DELIVERED') return st === 'DELIVERED';
@@ -163,91 +207,111 @@ export default function AdminDashboardView({
         </div>
 
         {/* ===================================================
-            REAL DATABASE OPERATIONAL METRICS CARDS
+            REAL DATABASE OPERATIONAL METRICS CARDS (5-METRIC REAL LIFECYCLE)
             =================================================== */}
-        <div className="ace-metrics-grid-2x2" style={{
+        <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
-          gap: '20px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
+          gap: '16px',
           marginBottom: '24px'
         }}>
-          {/* 1. Real Shipments Count */}
+          {/* 1. TOTAL BOOKINGS */}
           <div className="ace-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  TOTAL CONSIGNMENTS
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  TOTAL BOOKINGS
                 </span>
-                <div style={{ fontSize: '30px', fontWeight: 800, color: 'var(--color-primary-blue)', marginTop: '4px', lineHeight: 1 }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--color-primary-blue)', marginTop: '4px', lineHeight: 1 }}>
                   {totalShipmentsCount}
                 </div>
               </div>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'var(--color-light-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary-blue)' }}>
-                <Package size={20} />
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: 'var(--color-light-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary-blue)' }}>
+                <Package size={18} />
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
-              Today: <strong>{todayShipmentsCount}</strong> • This Month: <strong>{monthlyShipmentsCount}</strong>
-            </div>
-          </div>
-
-          {/* 2. Active In-Transit & Dispatched */}
-          <div className="ace-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  IN TRANSIT / ACTIVE
-                </span>
-                <div style={{ fontSize: '30px', fontWeight: 800, color: 'var(--color-bright-action)', marginTop: '4px', lineHeight: 1 }}>
-                  {(statusCounts.IN_TRANSIT || 0) + (statusCounts.OUT_FOR_DELIVERY || 0)}
-                </div>
-              </div>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-bright-action)' }}>
-                <Truck size={20} />
-              </div>
-            </div>
-            <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '12px', fontWeight: 500 }}>
-              Out for Delivery: <strong>{statusCounts.OUT_FOR_DELIVERY || 0}</strong> • Pending Intake: <strong>{statusCounts.PENDING_VERIFICATION || 0}</strong>
+            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+              All database consignments
             </div>
           </div>
 
-          {/* 3. Real Users Count Across Collections */}
-          <div className="ace-card">
+          {/* 2. PENDING INTAKE */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #D97706' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  SYSTEM USERS & STAFF
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  PENDING INTAKE
                 </span>
-                <div style={{ fontSize: '30px', fontWeight: 800, color: '#0F766E', marginTop: '4px', lineHeight: 1 }}>
-                  {usersCount.total}
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#D97706', marginTop: '4px', lineHeight: 1 }}>
+                  {countPending}
                 </div>
               </div>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#CCFBF1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F766E' }}>
-                <Users size={20} />
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
+                <Scale size={18} />
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
-              {usersCount.customers} Clients • {usersCount.staff} Staff • {usersCount.admins} Admins
+            <div style={{ fontSize: '11.5px', color: '#B45309', marginTop: '10px', fontWeight: 600 }}>
+              Awaiting staff verification
             </div>
           </div>
 
-          {/* 4. Real Revenue Aggregated from Charges */}
-          <div className="ace-card">
+          {/* 3. IN TRANSIT */}
+          <div className="ace-card" style={{ borderLeft: '3px solid var(--color-bright-action)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  TOTAL FREIGHT REVENUE
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  IN TRANSIT
                 </span>
-                <div style={{ fontSize: '30px', fontWeight: 800, color: 'var(--color-dark-navy)', marginTop: '4px', lineHeight: 1 }}>
-                  ${Number(revenueData.total || 0).toLocaleString()}
+                <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--color-bright-action)', marginTop: '4px', lineHeight: 1 }}>
+                  {countTransit}
                 </div>
               </div>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B45309' }}>
-                <DollarSign size={20} />
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-bright-action)' }}>
+                <Truck size={18} />
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
-              Monthly: <strong>${Number(revenueData.monthly || 0).toLocaleString()}</strong> • Today: <strong>${Number(revenueData.today || 0).toLocaleString()}</strong>
+            <div style={{ fontSize: '11.5px', color: '#0284C7', marginTop: '10px', fontWeight: 500 }}>
+              Active carrier line haul
+            </div>
+          </div>
+
+          {/* 4. OUT FOR DELIVERY */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #0891B2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#0E7490', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  OUT FOR DELIVERY
+                </span>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#0891B2', marginTop: '4px', lineHeight: 1 }}>
+                  {countOut}
+                </div>
+              </div>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#CFFAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0891B2' }}>
+                <Send size={18} />
+              </div>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#0891B2', marginTop: '10px', fontWeight: 500 }}>
+              Final mile delivery dispatch
+            </div>
+          </div>
+
+          {/* 5. DELIVERED */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #059669' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  DELIVERED
+                </span>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#059669', marginTop: '4px', lineHeight: 1 }}>
+                  {countDelivered}
+                </div>
+              </div>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669' }}>
+                <CheckCircle2 size={18} />
+              </div>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#059669', marginTop: '10px', fontWeight: 500 }}>
+              Completed shipments
             </div>
           </div>
         </div>
@@ -308,52 +372,78 @@ export default function AdminDashboardView({
           gap: '24px',
           marginBottom: '28px'
         }} className="admin-charts-grid">
-          {/* Monthly Shipment Volume Bar Chart */}
+          {/* Section 14: Recent Shipment Activity Audit Trail */}
           <div className="ace-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--color-border)', paddingBottom: '10px' }}>
               <div>
-                <h3 style={{ fontSize: '16px', color: 'var(--color-primary-blue)', fontWeight: 700 }}>
-                  Freight Volume Trend (2026)
+                <h3 style={{ fontSize: '16px', color: 'var(--color-primary-blue)', fontWeight: 700, margin: 0 }}>
+                  Recent Shipment Activity
                 </h3>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  Total metric tons dispatched monthly
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  Live operational audit trail across MongoDB database
                 </p>
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--color-bright-action)', fontWeight: 600 }}>
-                Average: 42,000 MT
+              <span style={{ fontSize: '11px', color: '#059669', backgroundColor: '#ECFDF5', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                {recentActivities.length} Events
               </span>
             </div>
 
-            {/* Custom CSS Bar Chart */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '180px', paddingTop: '20px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px' }}>
-              {[
-                { month: 'Apr', value: 58, label: '34k' },
-                { month: 'May', value: 66, label: '39k' },
-                { month: 'Jun', value: 72, label: '42k' },
-                { month: 'Jul', value: 84, label: '49k' },
-                { month: 'Aug', value: 92, label: '54k' },
-                { month: 'Sep', value: 98, label: '58k' }
-              ].map((bar, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', flex: 1 }}>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{bar.label}</span>
-                  <div 
+            {recentActivities.length === 0 ? (
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '36px 0' }}>
+                No recent shipment transitions logged yet.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
+                {recentActivities.slice(0, 8).map(act => (
+                  <div
+                    key={act.id}
                     style={{
-                      width: '28px',
-                      height: `${bar.value}%`,
-                      backgroundColor: i === 5 ? 'var(--color-bright-action)' : 'var(--color-primary-blue)',
-                      borderRadius: '6px 6px 2px 2px',
-                      transition: 'height 0.5s ease'
+                      backgroundColor: 'var(--color-surface)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px'
                     }}
-                    title={`${bar.month}: ${bar.label}`}
-                  />
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>{bar.month}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-muted)' }}>
-              <span>Q2 baseline met</span>
-              <span style={{ color: '#10B981', fontWeight: 600 }}>+24% YoY Cargo Increase</span>
-            </div>
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong
+                          style={{ color: 'var(--color-primary-blue)', fontFamily: 'monospace', fontSize: '13px', cursor: 'pointer' }}
+                          onClick={() => onSelectShipment && onSelectShipment(act.shipment)}
+                          title="View shipment details"
+                        >
+                          {act.trackingNumber}
+                        </strong>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: act.changedByRole === 'ADMIN' ? '#FEF3C7' : act.changedByRole === 'STAFF' ? '#CCFBF1' : '#E0F2FE',
+                          color: act.changedByRole === 'ADMIN' ? '#B45309' : act.changedByRole === 'STAFF' ? '#0F766E' : '#0369A1',
+                          padding: '1px 6px',
+                          borderRadius: '4px'
+                        }}>
+                          {act.action}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                        Updated by <strong>{act.updatedBy}</strong> ({act.changedByRole || 'STAFF'})
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {act.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                        {act.timestamp.toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Transport Mode Distribution */}

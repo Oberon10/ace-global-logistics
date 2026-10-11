@@ -53,6 +53,7 @@ export default function StaffDashboardView({
   // Modals
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Verification Form State
@@ -107,7 +108,7 @@ export default function StaffDashboardView({
 
     const st = getStatusKey(s);
     if (activeTab === 'ALL') return true;
-    if (activeTab === 'PENDING_VERIFICATION') return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
+    if (activeTab === 'PENDING_INTAKE' || activeTab === 'PENDING_VERIFICATION') return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
     if (activeTab === 'VERIFIED') return st === 'VERIFIED';
     if (activeTab === 'READY_FOR_DISPATCH') return st === 'READY_FOR_DISPATCH';
     if (activeTab === 'IN_TRANSIT') return st === 'IN_TRANSIT';
@@ -146,7 +147,7 @@ export default function StaffDashboardView({
   };
 
   // Submit physical verification
-  const handleSubmitVerification = async (decision = 'APPROVE') => {
+  const handleSubmitVerification = async (decision = 'APPROVE', moveToTransit = false) => {
     if (!activeShipment || !verifyHandler) return;
     setIsSubmitting(true);
     try {
@@ -159,11 +160,17 @@ export default function StaffDashboardView({
         verificationNotes: verifyForm.verificationNotes
       });
 
-      if (res) {
-        setShowVerifyModal(false);
-        setSuccessMessage(`Shipment [${activeShipment.trackingNumber}] successfully ${decision === 'APPROVE' ? 'VERIFIED' : 'REJECTED'}.`);
-        setTimeout(() => setSuccessMessage(''), 4500);
+      if (decision === 'APPROVE' && moveToTransit && updateStatusHandler) {
+        await updateStatusHandler(activeShipment.id || activeShipment.trackingNumber, {
+          status: 'IN_TRANSIT',
+          currentLocation: `Dispatched from ${activeShipment.sender?.city || 'Accra'} Hub en route to ${activeShipment.receiver?.city || activeShipment.destination}`,
+          note: 'Consignment verified and transferred to active carrier line-haul.'
+        });
       }
+
+      setShowVerifyModal(false);
+      setSuccessMessage(`Shipment [${activeShipment.trackingNumber}] successfully verified ${moveToTransit ? 'and moved to In Transit' : ''}.`);
+      setTimeout(() => setSuccessMessage(''), 4500);
     } catch (err) {
       console.error(err);
       setErrorMessage(err.message || 'Error recording verification.');
@@ -173,21 +180,71 @@ export default function StaffDashboardView({
     }
   };
 
-  // Lifecycle Transitions (Adhering to strict rule transitions)
-  const handleTransition = async (nextStatus, defaultLoc, defaultNote) => {
-    if (!activeShipment || !updateStatusHandler) return;
+  // Request Status Transition Confirmation (Section 20)
+  const requestStatusTransition = (shipment, nextStatus, customLoc, customNote) => {
+    const target = shipment || activeShipment;
+    if (!target) return;
+
+    let title = '';
+    let description = '';
+    let confirmBtnText = '';
+    let defaultLoc = customLoc || target.currentLocation;
+    let defaultNote = customNote || '';
+
+    if (nextStatus === 'IN_TRANSIT') {
+      title = 'Move Shipment to Transit?';
+      description = 'This will remove the shipment from Pending Intake and place it in the active carrier line-haul workflow.';
+      confirmBtnText = 'Confirm & Move to Transit';
+      defaultLoc = defaultLoc || `Dispatched from ${target.sender?.city || 'Accra'} Hub en route to ${target.receiver?.city || target.destination}`;
+      defaultNote = defaultNote || 'Package acknowledged and dispatched into active linehaul transit.';
+    } else if (nextStatus === 'OUT_FOR_DELIVERY') {
+      title = 'Mark Out for Delivery?';
+      description = 'This will assign the consignment to final-mile delivery courier dispatch.';
+      confirmBtnText = 'Confirm & Out for Delivery';
+      defaultLoc = defaultLoc || `${target.receiver?.city || target.destination} Delivery Courier Unit`;
+      defaultNote = defaultNote || 'Package out for final delivery courier handover.';
+    } else if (nextStatus === 'DELIVERED') {
+      title = 'Confirm Consignment Delivery?';
+      description = 'This will complete the shipment operational lifecycle and mark the cargo as delivered.';
+      confirmBtnText = 'Confirm Delivery';
+      defaultLoc = defaultLoc || `${target.destination} (Destination Handover)`;
+      defaultNote = defaultNote || 'Delivered successfully to consignee. Verified by terminal staff.';
+    } else {
+      title = `Advance Status to ${nextStatus.replace(/_/g, ' ')}?`;
+      description = `This will update the shipment status in MongoDB Atlas to ${nextStatus.replace(/_/g, ' ')}.`;
+      confirmBtnText = `Confirm & Set ${nextStatus.replace(/_/g, ' ')}`;
+    }
+
+    setConfirmModalData({
+      shipment: target,
+      currentStatusDisplay: target.status || 'Pending Intake',
+      nextStatus,
+      nextStatusDisplay: nextStatus.replace(/_/g, ' '),
+      title,
+      description,
+      confirmBtnText,
+      defaultLoc,
+      defaultNote
+    });
+  };
+
+  // Execute Confirmed Transition
+  const executeConfirmedTransition = async () => {
+    if (!confirmModalData || !updateStatusHandler) return;
+    const { shipment, nextStatus, defaultLoc, defaultNote } = confirmModalData;
     setIsSubmitting(true);
     try {
-      const loc = actionLocation || defaultLoc || activeShipment.currentLocation;
+      const loc = actionLocation || defaultLoc || shipment.currentLocation;
       const note = actionNote || defaultNote || `Operational stage advanced to ${nextStatus}`;
-      await updateStatusHandler(activeShipment.id || activeShipment.trackingNumber, {
+      await updateStatusHandler(shipment.id || shipment.trackingNumber, {
         status: nextStatus,
         currentLocation: loc,
         note: note
       });
+      setConfirmModalData(null);
       setActionLocation('');
       setActionNote('');
-      setSuccessMessage(`Shipment [${activeShipment.trackingNumber}] advanced to ${nextStatus}.`);
+      setSuccessMessage(`Shipment [${shipment.trackingNumber}] advanced to ${nextStatus.replace(/_/g, ' ')}.`);
       setTimeout(() => setSuccessMessage(''), 4500);
     } catch (err) {
       console.error(err);
@@ -382,12 +439,10 @@ export default function StaffDashboardView({
         }}>
           {[
             { id: 'ALL', label: 'All Consignments', count: shipments.length },
-            { id: 'PENDING_VERIFICATION', label: 'Pending Shipments', count: countPending, highlight: countPending > 0 },
-            { id: 'VERIFIED', label: 'Verified', count: countVerified },
-            { id: 'READY_FOR_DISPATCH', label: 'Ready for Dispatch', count: countReady },
-            { id: 'IN_TRANSIT', label: 'In Transit Shipments', count: countTransit },
+            { id: 'PENDING_INTAKE', label: 'Pending Intake', count: countPending, highlight: countPending > 0 },
+            { id: 'IN_TRANSIT', label: 'In Transit', count: countTransit },
             { id: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', count: countOut },
-            { id: 'DELIVERED', label: 'Delivered Shipments', count: countDelivered },
+            { id: 'DELIVERED', label: 'Delivered', count: countDelivered },
             { id: 'EXCEPTIONS', label: 'Exceptions' }
           ].map(tab => (
             <button
@@ -503,21 +558,31 @@ export default function StaffDashboardView({
                       Next Operational Action
                     </div>
 
-                    {/* 1. If PENDING */}
+                    {/* 1. If PENDING / PENDING INTAKE */}
                     {(getStatusKey(activeShipment) === 'PENDING' || getStatusKey(activeShipment) === 'PENDING_VERIFICATION' || getStatusKey(activeShipment) === 'PENDING_INTAKE' || getStatusKey(activeShipment) === 'ORDER_CREATED') && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          This package was booked as a <strong>Shipment Request</strong>. Staff must physically weigh the package and verify its dimensions before it can proceed into the delivery network.
+                          This package was booked and is awaiting operational verification. Staff can review measurements or acknowledge and dispatch directly to transit line-haul.
                         </p>
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
                             onClick={() => handleOpenVerifyModal(activeShipment)}
-                            className="ace-btn ace-btn-primary"
-                            style={{ flex: 1, height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                            className="ace-btn ace-btn-secondary"
+                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                           >
                             <Scale size={18} />
-                            <span>Verify Physical Package</span>
+                            <span>Review & Verify Package</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestStatusTransition(activeShipment, 'IN_TRANSIT')}
+                            disabled={isSubmitting}
+                            className="ace-btn ace-btn-primary"
+                            style={{ flex: 1, minWidth: '180px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          >
+                            <Truck size={18} />
+                            <span>Verify & Move to Transit</span>
                           </button>
                         </div>
                       </div>
@@ -527,36 +592,18 @@ export default function StaffDashboardView({
                     {getStatusKey(activeShipment) === 'VERIFIED' && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          Physical package verified ({activeShipment.package?.actualWeight || activeShipment.package?.weightKg} kg). Ready to move to transit linehaul or stage for dispatch.
+                          Physical package verified ({activeShipment.package?.actualWeight || activeShipment.package?.weightKg} kg). Ready to move to transit line-haul.
                         </p>
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
-                            onClick={() => handleTransition(
-                              'IN_TRANSIT',
-                              `Dispatched from ${activeShipment.sender?.city || 'Accra'} Hub en route to ${activeShipment.receiver?.city || activeShipment.destination}`,
-                              'Package acknowledged and dispatched into active linehaul transit.'
-                            )}
+                            onClick={() => requestStatusTransition(activeShipment, 'IN_TRANSIT')}
                             disabled={isSubmitting}
                             className="ace-btn ace-btn-primary"
-                            style={{ flex: 1, minWidth: '180px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                            style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                           >
                             <Truck size={18} />
-                            <span>Move to Transit (Dispatch)</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleTransition(
-                              'READY_FOR_DISPATCH',
-                              `${activeShipment.sender?.city || 'Accra'} Staging Hub (Bay 2)`,
-                              'Package verified and staged ready for dispatch courier pickup.'
-                            )}
-                            disabled={isSubmitting}
-                            className="ace-btn ace-btn-ghost"
-                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '1px solid var(--color-border)' }}
-                          >
-                            <ClipboardCheck size={18} />
-                            <span>Stage for Dispatch</span>
+                            <span>Move to Transit (Line Haul)</span>
                           </button>
                         </div>
                       </div>
@@ -566,15 +613,11 @@ export default function StaffDashboardView({
                     {getStatusKey(activeShipment) === 'READY_FOR_DISPATCH' && (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          Consignment is staged. Hand over to linehaul transport carrier to move shipment into active transit.
+                          Consignment is staged. Hand over to line-haul transport carrier to move shipment into active transit.
                         </p>
                         <button
                           type="button"
-                          onClick={() => handleTransition(
-                            'IN_TRANSIT',
-                            `En route to ${activeShipment.receiver?.city || activeShipment.destination}`,
-                            'Consignment loaded and dispatched on carrier linehaul.'
-                          )}
+                          onClick={() => requestStatusTransition(activeShipment, 'IN_TRANSIT')}
                           disabled={isSubmitting}
                           className="ace-btn ace-btn-primary"
                           style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -589,33 +632,15 @@ export default function StaffDashboardView({
                     {getStatusKey(activeShipment) === 'IN_TRANSIT' ? (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          Consignment is currently in active transit. Confirm delivery upon destination arrival or dispatch final-mile courier.
+                          Consignment is currently in active carrier line haul. When destination terminal is reached, advance to final delivery courier run.
                         </p>
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
-                            onClick={() => handleTransition(
-                              'DELIVERED',
-                              `${activeShipment.destination} (Destination Handover)`,
-                              'Delivered successfully to consignee. Verified by terminal staff.'
-                            )}
-                            disabled={isSubmitting}
-                            className="ace-btn"
-                            style={{ flex: 1, minWidth: '180px', height: '44px', backgroundColor: '#059669', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                          >
-                            <CheckCircle2 size={18} />
-                            <span>Confirm Delivery (Delivered)</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleTransition(
-                              'OUT_FOR_DELIVERY',
-                              `${activeShipment.receiver?.city || activeShipment.destination} Delivery Courier Unit`,
-                              'Package out for final delivery courier handover.'
-                            )}
+                            onClick={() => requestStatusTransition(activeShipment, 'OUT_FOR_DELIVERY')}
                             disabled={isSubmitting}
                             className="ace-btn ace-btn-action"
-                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                            style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                           >
                             <Send size={18} />
                             <span>Mark Out for Delivery</span>
@@ -632,11 +657,7 @@ export default function StaffDashboardView({
                         </p>
                         <button
                           type="button"
-                          onClick={() => handleTransition(
-                            'DELIVERED',
-                            `${activeShipment.destination} (Recipient Confirmed)`,
-                            'Delivered and verified recipient signature recorded.'
-                          )}
+                          onClick={() => requestStatusTransition(activeShipment, 'DELIVERED')}
                           disabled={isSubmitting}
                           className="ace-btn"
                           style={{ width: '100%', height: '44px', backgroundColor: '#059669', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -865,7 +886,12 @@ export default function StaffDashboardView({
               </thead>
               <tbody>
                 {filteredShipments.map(s => {
-                  const isPending = s.status === 'PENDING_VERIFICATION';
+                  const st = getStatusKey(s);
+                  const isPending = st === 'PENDING' || st === 'PENDING_INTAKE' || st === 'PENDING_VERIFICATION' || st === 'ORDER_CREATED';
+                  const isInTransit = st === 'IN_TRANSIT';
+                  const isOutForDelivery = st === 'OUT_FOR_DELIVERY';
+                  const isDelivered = st === 'DELIVERED';
+
                   return (
                     <tr 
                       key={s.id} 
@@ -888,17 +914,57 @@ export default function StaffDashboardView({
                         )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {isPending ? (
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          {isPending && (
+                            <>
+                              <button
+                                onClick={() => handleOpenVerifyModal(s)}
+                                className="ace-btn ace-btn-secondary ace-btn-sm"
+                                style={{ fontSize: '11.5px', padding: '4px 8px' }}
+                                title="Review and verify measurements"
+                              >
+                                <Scale size={12} />
+                                <span>Review</span>
+                              </button>
+                              <button
+                                onClick={() => requestStatusTransition(s, 'IN_TRANSIT')}
+                                className="ace-btn ace-btn-primary ace-btn-sm"
+                                style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                                title="Verify and advance to In Transit"
+                              >
+                                <Truck size={12} />
+                                <span>Verify & Move to Transit</span>
+                              </button>
+                            </>
+                          )}
+                          {isInTransit && (
                             <button
-                              onClick={() => handleOpenVerifyModal(s)}
-                              className="ace-btn ace-btn-primary ace-btn-sm"
-                              style={{ fontSize: '12px', padding: '4px 10px' }}
+                              onClick={() => requestStatusTransition(s, 'OUT_FOR_DELIVERY')}
+                              className="ace-btn ace-btn-action ace-btn-sm"
+                              style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                              title="Advance to final delivery run"
                             >
-                              <Scale size={13} />
-                              <span>Verify</span>
+                              <Send size={12} />
+                              <span>Mark Out for Delivery</span>
                             </button>
-                          ) : (
+                          )}
+                          {isOutForDelivery && (
+                            <button
+                              onClick={() => requestStatusTransition(s, 'DELIVERED')}
+                              className="ace-btn ace-btn-sm"
+                              style={{ fontSize: '11.5px', padding: '4px 10px', backgroundColor: '#059669', color: '#fff', fontWeight: 700 }}
+                              title="Confirm completed handover"
+                            >
+                              <CheckCircle2 size={12} />
+                              <span>Mark Delivered</span>
+                            </button>
+                          )}
+                          {isDelivered && (
+                            <span style={{ fontSize: '11.5px', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Check size={13} /> Completed
+                            </span>
+                          )}
+                          {!isPending && !isInTransit && !isOutForDelivery && !isDelivered && (
                             <button
                               onClick={() => setSelectedTracking(s.trackingNumber)}
                               className="ace-btn ace-btn-ghost ace-btn-sm"
@@ -1033,7 +1099,7 @@ export default function StaffDashboardView({
                     <span>Reject Consignment</span>
                   </button>
 
-                  <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={() => setShowVerifyModal(false)}
@@ -1043,12 +1109,23 @@ export default function StaffDashboardView({
                     </button>
 
                     <button
-                      type="submit"
+                      type="button"
                       disabled={isSubmitting}
-                      className="ace-btn ace-btn-primary"
+                      onClick={() => handleSubmitVerification('APPROVE', false)}
+                      className="ace-btn ace-btn-secondary"
                     >
                       <CheckCircle2 size={16} />
-                      <span>{isSubmitting ? 'Verifying...' : 'Approve & Mark Verified'}</span>
+                      <span>{isSubmitting ? 'Recording...' : 'Mark Verified'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => handleSubmitVerification('APPROVE', true)}
+                      className="ace-btn ace-btn-primary"
+                    >
+                      <Truck size={16} />
+                      <span>{isSubmitting ? 'Updating...' : 'Verify & Move to Transit'}</span>
                     </button>
                   </div>
                 </div>
@@ -1223,6 +1300,79 @@ export default function StaffDashboardView({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* ===================================================
+            MODAL 3: STATUS CHANGE CONFIRMATION (SECTION 20)
+            =================================================== */}
+        {confirmModalData && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}>
+            <div className="ace-card" style={{ maxWidth: '480px', width: '100%', padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary-blue)', margin: 0 }}>
+                  {confirmModalData.title}
+                </h3>
+                <button
+                  onClick={() => !isSubmitting && setConfirmModalData(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ backgroundColor: 'var(--color-very-light-blue)', padding: '14px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Shipment:</span>
+                  <strong style={{ fontFamily: 'monospace', color: 'var(--color-primary-blue)' }}>{confirmModalData.shipment.trackingNumber}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Current Status:</span>
+                  <span style={{ fontWeight: 700, color: '#B45309' }}>{confirmModalData.currentStatusDisplay}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>New Status:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--color-bright-action)' }}>{confirmModalData.nextStatusDisplay}</span>
+                </div>
+              </div>
+
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
+                {confirmModalData.description}
+              </p>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setConfirmModalData(null)}
+                  className="ace-btn ace-btn-ghost"
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={executeConfirmedTransition}
+                  className="ace-btn ace-btn-action"
+                  disabled={isSubmitting}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                  <span>{isSubmitting ? 'Updating Database...' : confirmModalData.confirmBtnText}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
