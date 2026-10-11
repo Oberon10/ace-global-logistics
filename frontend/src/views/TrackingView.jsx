@@ -110,24 +110,24 @@ export default function TrackingView({
 
   // Calculate Milestone Progress Stepper (6-stage operational lifecycle)
   const getMilestoneSteps = () => {
-    const status = shipment?.status || 'PENDING_VERIFICATION';
-    const isDelivered = status === 'DELIVERED';
-    const isOutForDelivery = status === 'OUT_FOR_DELIVERY';
-    const isInTransit = status === 'IN_TRANSIT' || status === 'IN TRANSIT';
-    const isReadyForDispatch = status === 'READY_FOR_DISPATCH';
-    const isVerified = status === 'VERIFIED';
-    const isPendingVerification = status === 'PENDING_VERIFICATION';
+    const rawStatus = (shipment?.status || 'PENDING').toUpperCase().trim().replace(/\s+/g, '_');
+    const isDelivered = rawStatus === 'DELIVERED';
+    const isOutForDelivery = rawStatus === 'OUT_FOR_DELIVERY';
+    const isInTransit = rawStatus === 'IN_TRANSIT';
+    const isReadyForDispatch = rawStatus === 'READY_FOR_DISPATCH';
+    const isVerified = rawStatus === 'VERIFIED';
+    const isPending = rawStatus === 'PENDING' || rawStatus === 'PENDING_INTAKE' || rawStatus === 'PENDING_VERIFICATION' || rawStatus === 'ORDER_CREATED';
 
     // Step 1: Shipment Created
     const s1Status = 'completed';
     // Step 2: Physical Verification
-    const s2Status = isPendingVerification ? 'active' : 'completed';
+    const s2Status = isPending ? 'active' : 'completed';
     // Step 3: Ready for Dispatch
-    const s3Status = (isPendingVerification) ? 'future' : isVerified ? 'active' : 'completed';
+    const s3Status = isPending ? 'future' : isVerified ? 'active' : 'completed';
     // Step 4: In Transit
-    const s4Status = (isPendingVerification || isVerified) ? 'future' : isReadyForDispatch ? 'active' : isInTransit ? 'active' : (isOutForDelivery || isDelivered) ? 'completed' : 'future';
+    const s4Status = (isPending || isVerified) ? 'future' : (isReadyForDispatch || isInTransit) ? 'active' : (isOutForDelivery || isDelivered) ? 'completed' : 'future';
     // Step 5: Out for Delivery
-    const s5Status = (isDelivered) ? 'completed' : isOutForDelivery ? 'active' : 'future';
+    const s5Status = isDelivered ? 'completed' : isOutForDelivery ? 'active' : 'future';
     // Step 6: Delivered
     const s6Status = isDelivered ? 'completed' : 'future';
 

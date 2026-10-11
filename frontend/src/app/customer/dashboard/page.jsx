@@ -49,10 +49,10 @@ export default function CustomerDashboardPage() {
       onViewReceipt={handleOpenReceipt} 
       setView={navigate} 
       user={currentUser || { 
-        name: 'Kwame Mensah', 
-        company: 'Gold Coast Trading Ltd', 
-        email: 'k.mensah@goldcoasttrading.com', 
-        phone: '+233 24 555 0192', 
+        name: 'Customer Shipper', 
+        company: 'Customer Account', 
+        email: '', 
+        phone: '', 
         role: 'customer' 
       }} 
       activeRole={activeRole} 

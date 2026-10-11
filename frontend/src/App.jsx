@@ -426,10 +426,10 @@ export default function App() {
               onViewReceipt={handleOpenReceipt} 
               setView={setCurrentView} 
               user={currentUser || { 
-                name: 'Kwame Mensah', 
-                company: 'Gold Coast Trading Ltd', 
-                email: 'k.mensah@goldcoasttrading.com',
-                phone: '+233 24 555 0192',
+                name: 'Customer Shipper', 
+                company: 'Customer Account', 
+                email: '',
+                phone: '',
                 role: 'customer'
               }}
               activeRole={activeRole}
@@ -480,7 +480,7 @@ export default function App() {
               onSelectShipment={handleSelectShipment} 
               onViewReceipt={handleOpenReceipt} 
               setView={setCurrentView} 
-              user={currentUser || { name: 'Kwame Mensah', company: 'Gold Coast Trading Ltd' }}
+              user={currentUser || { name: 'Customer Shipper', company: 'Customer Account' }}
               activeRole={activeRole}
               setActiveRole={setActiveRole}
             />

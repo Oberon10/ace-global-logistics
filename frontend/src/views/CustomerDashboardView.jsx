@@ -37,7 +37,7 @@ export default function CustomerDashboardView({
   onSelectShipment, 
   onViewReceipt, 
   setView, 
-  user = { name: 'Kwame Mensah', company: 'Gold Coast Trading Ltd', email: 'k.mensah@goldcoasttrading.com' },
+  user = { name: 'Customer Shipper', company: 'Corporate Account', email: '' },
   activeRole = 'customer',
   setActiveRole
 }) {
@@ -56,13 +56,13 @@ export default function CustomerDashboardView({
   // Customer Profile View/Edit State
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileForm, setProfileForm] = useState({
-    name: user?.name || 'Kwame Mensah',
-    company: user?.company || 'Gold Coast Trading Ltd',
-    email: user?.email || 'k.mensah@goldcoasttrading.com',
-    phone: user?.phone || '+233 24 555 0192',
-    address: user?.address || 'Plot 14, Industrial Area, Ring Road Central',
-    city: user?.city || 'Accra',
-    country: user?.country || 'Ghana'
+    name: user?.name || 'Customer Shipper',
+    company: user?.company || 'Corporate Account',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    address: user?.address || '',
+    city: user?.city || '',
+    country: user?.country || ''
   });
   const [profileSuccessNotice, setProfileSuccessNotice] = useState('');
 
@@ -106,10 +106,10 @@ export default function CustomerDashboardView({
     purpose: 'Customs Document Clearance & GRA Review',
     date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
     timeSlot: '10:00 AM - 10:45 AM GMT',
-    fullName: user.name || 'Kwame Mensah',
-    phone: '+233 24 555 0192',
-    email: user.email || 'k.mensah@goldcoasttrading.com',
-    consignmentRef: 'ACE-2T34-79011'
+    fullName: user.name || '',
+    phone: user.phone || '',
+    email: user.email || '',
+    consignmentRef: ''
   });
   const [generatedAppointment, setGeneratedAppointment] = useState(null);
 
@@ -402,9 +402,11 @@ export default function CustomerDashboardView({
                 style={{ height: '34px', padding: '0 10px', fontSize: '12.5px', width: 'auto', backgroundColor: 'var(--color-white)' }}
               >
                 <option value="ALL">All Platform Deliveries ({shipments.length})</option>
-                <option value="Kwame Mensah">Kwame Mensah (Gold Coast Trading Ltd)</option>
-                <option value="Jan De Vries">Jan De Vries (Maersk Logistics BV)</option>
-                <option value="Marcus Cole">Marcus Cole (Apex Retail Solutions)</option>
+                {Array.from(new Set(
+                  shipments.map(s => s.sender?.name || s.sender?.company || s.customer || s.customerName).filter(Boolean)
+                )).map((custName, idx) => (
+                  <option key={idx} value={custName}>{custName}</option>
+                ))}
               </select>
             </div>
           </div>
