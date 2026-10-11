@@ -162,40 +162,15 @@ export function AppProvider({ children }) {
   // Hydration state tracking
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Authentication State with client lazy synchronous initialization
-  const [activeRole, setActiveRole] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('ace_auth_role');
-        if (saved) return saved;
-      } catch {}
-    }
-    return 'guest';
-  });
-
-  const [currentUser, setCurrentUser] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('ace_current_user');
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
-
+  // Authentication State: Initialize consistently for SSR and hydrate from localStorage in useEffect
+  const [activeRole, setActiveRole] = useState('guest');
+  const [currentUser, setCurrentUser] = useState(null);
   const [loginPortal, setLoginPortal] = useState('customer');
   const [authNotice, setAuthNotice] = useState('');
   const [postLoginRedirect, setPostLoginRedirect] = useState(null);
 
   // Theme State
-  const [theme, setTheme] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        return localStorage.getItem('ace_theme') || 'light';
-      } catch {}
-    }
-    return 'light';
-  });
+  const [theme, setTheme] = useState('light');
 
   // API Base URL helper
   const getApiBase = () => {

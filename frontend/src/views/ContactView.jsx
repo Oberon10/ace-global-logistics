@@ -513,7 +513,7 @@ export default function ContactView({ setView, currentUser, activeRole }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#38BDF8', fontWeight: 600, fontFamily: 'monospace' }}>
                   <Clock size={13} color="#38BDF8" style={{ flexShrink: 0 }} />
-                  <span>{getHubTime(currentHub.timeZone)} {currentHub.tzLabel}</span>
+                  <span suppressHydrationWarning>{getHubTime(currentHub.timeZone)} {currentHub.tzLabel}</span>
                 </div>
               </div>
 

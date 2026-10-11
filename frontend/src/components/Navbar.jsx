@@ -29,9 +29,18 @@ export default function Navbar({
   setLoginPortal,
   onClearTracking
 }) {
+  const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [portalDropdownOpen, setPortalDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Use guest on SSR & first client hydration render to guarantee 100% matching HTML tree
+  const displayRole = mounted ? activeRole : 'guest';
+  const displayUser = mounted ? currentUser : null;
 
   const portalDropdownRef = useRef(null);
   const roleDropdownRef = useRef(null);
@@ -123,17 +132,17 @@ export default function Navbar({
 
   // Define authorized workspaces depending on role - strictly isolated
   const getAuthorizedWorkspaces = () => {
-    if (activeRole === 'admin') {
+    if (displayRole === 'admin') {
       return [
         { id: 'admin-dashboard', label: 'Admin Enterprise Portal', desc: 'Full KPIs, Users & Settings' },
         { id: 'home', label: 'Public Website', desc: 'Return to Marketing Site' }
       ];
-    } else if (activeRole === 'staff') {
+    } else if (displayRole === 'staff') {
       return [
         { id: 'staff-dashboard', label: 'Staff Dispatcher Console', desc: 'Terminal Intake & Status Manager' },
         { id: 'home', label: 'Public Website', desc: 'Return to Marketing Site' }
       ];
-    } else if (activeRole === 'customer') {
+    } else if (displayRole === 'customer') {
       return [
         { id: 'customer-dashboard', label: 'Customer Portal', desc: 'My Shipments & Bookings' },
         { id: 'home', label: 'Public Website', desc: 'Return to Marketing Site' }
@@ -174,7 +183,7 @@ export default function Navbar({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {/* If NOT LOGGED IN (Guest): Operations Support Desk (Portal Login moved to main navbar below) */}
-            {activeRole === 'guest' ? (
+            {displayRole === 'guest' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <span style={{ color: '#D9E7F0', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }} className="desktop-nav">
                   <PhoneCall size={12} color="#7dd3fc" />
@@ -203,12 +212,12 @@ export default function Navbar({
                   >
                     <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10B981', flexShrink: 0 }} />
                     <span className="desktop-nav">
-                      {activeRole === 'admin' && (currentUser?.name ? `Admin: ${currentUser.name}` : 'Admin: David Sterling')}
-                      {activeRole === 'staff' && (currentUser?.name ? `Staff: ${currentUser.name}` : "Staff: Sarah O'Connor")}
-                      {activeRole === 'customer' && `Customer: ${currentUser?.name || 'Kwame Mensah'}`}
+                      {displayRole === 'admin' && (displayUser?.name ? `Admin: ${displayUser.name}` : 'Admin: David Sterling')}
+                      {displayRole === 'staff' && (displayUser?.name ? `Staff: ${displayUser.name}` : "Staff: Sarah O'Connor")}
+                      {displayRole === 'customer' && `Customer: ${displayUser?.name || 'Kwame Mensah'}`}
                     </span>
                     <span className="mobile-only" style={{ textTransform: 'capitalize' }}>
-                      {activeRole}
+                      {displayRole}
                     </span>
                     <ChevronDown size={12} />
                   </button>
@@ -418,7 +427,7 @@ export default function Navbar({
           </button>
 
           {/* Portal Login Dropdown (replaces "Get a Quote") */}
-          {activeRole === 'guest' ? (
+          {displayRole === 'guest' ? (
             <div style={{ position: 'relative' }} ref={portalDropdownRef}>
               <button
                 type="button"
@@ -580,8 +589,8 @@ export default function Navbar({
             <button
               type="button"
               onClick={() => handleNavClick(
-                activeRole === 'admin' ? 'admin-dashboard' :
-                activeRole === 'staff' ? 'staff-dashboard' :
+                displayRole === 'admin' ? 'admin-dashboard' :
+                displayRole === 'staff' ? 'staff-dashboard' :
                 'customer-dashboard'
               )}
               className="ace-btn ace-btn-action"
@@ -602,7 +611,7 @@ export default function Navbar({
             >
               <UserCheck size={16} color="#FFFFFF" />
               <span>
-                {activeRole === 'admin' ? 'Admin Portal' : activeRole === 'staff' ? 'Staff Portal' : 'Customer Portal'}
+                {displayRole === 'admin' ? 'Admin Portal' : displayRole === 'staff' ? 'Staff Portal' : 'Customer Portal'}
               </span>
               <ArrowRight size={15} />
             </button>
@@ -701,7 +710,7 @@ export default function Navbar({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {activeRole === 'guest' ? (
+            {displayRole === 'guest' ? (
               <button
                 onClick={() => {
                   if (setLoginPortal) setLoginPortal('customer');
@@ -717,8 +726,8 @@ export default function Navbar({
             ) : (
               <button
                 onClick={() => handleNavClick(
-                  activeRole === 'admin' ? 'admin-dashboard' :
-                  activeRole === 'staff' ? 'staff-dashboard' :
+                  displayRole === 'admin' ? 'admin-dashboard' :
+                  displayRole === 'staff' ? 'staff-dashboard' :
                   'customer-dashboard'
                 )}
                 className="ace-btn ace-btn-action"
@@ -726,7 +735,7 @@ export default function Navbar({
               >
                 <UserCheck size={16} />
                 <span>
-                  {activeRole === 'admin' ? 'Admin Portal' : activeRole === 'staff' ? 'Staff Portal' : 'Customer Portal'}
+                  {displayRole === 'admin' ? 'Admin Portal' : displayRole === 'staff' ? 'Staff Portal' : 'Customer Portal'}
                 </span>
                 <ArrowRight size={16} />
               </button>
@@ -738,7 +747,7 @@ export default function Navbar({
             >
               <span>Track Shipment</span>
             </button>
-            {activeRole === 'guest' ? (
+            {displayRole === 'guest' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '4px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Select Login Portal</div>
                 <button
@@ -778,7 +787,7 @@ export default function Navbar({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '4px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                  {activeRole} Workspaces & Consoles
+                  {displayRole} Workspaces & Consoles
                 </div>
                 {authorizedWorkspaces.map(w => (
                   <button
