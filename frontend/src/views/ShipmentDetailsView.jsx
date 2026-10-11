@@ -220,23 +220,62 @@ export default function ShipmentDetailsView({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
                 <Package size={18} color="var(--color-primary-blue)" />
                 <h3 style={{ fontSize: '16px', color: 'var(--color-primary-blue)', fontWeight: 700 }}>
-                  Package Details
+                  Package & Intake Verification
                 </h3>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13.5px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '11px', fontSize: '13.5px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Cargo Type:</span>
                   <span style={{ fontWeight: 600 }}>{shipment.package?.type || 'Standard Freight'}</span>
                 </div>
+                
+                {/* Estimated vs Actual Weight */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Total Weight:</span>
-                  <span style={{ fontWeight: 600 }}>{shipment.package?.weightKg} kg</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Customer Estimated Weight:</span>
+                  <span style={{ fontWeight: 600 }}>{shipment.package?.estimatedWeight || shipment.package?.weightKg} kg</span>
                 </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Verified Official Weight:</span>
+                  {shipment.package?.actualWeight ? (
+                    <span style={{ fontWeight: 700, color: '#059669', backgroundColor: '#ECFDF5', padding: '1px 8px', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
+                      {shipment.package.actualWeight} kg (Verified)
+                    </span>
+                  ) : (
+                    <span style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12.5px' }}>
+                      Pending Physical Intake
+                    </span>
+                  )}
+                </div>
+
+                {/* Dimensions */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Dimensions:</span>
-                  <span style={{ fontWeight: 600 }}>{shipment.package?.dimensions}</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {shipment.package?.actualDimensions || shipment.package?.estimatedDimensions || shipment.package?.dimensions || 'Standard'}
+                    {shipment.package?.actualDimensions ? ' (Verified)' : ' (Est.)'}
+                  </span>
                 </div>
+
+                {shipment.package?.condition && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Physical Condition:</span>
+                    <span style={{ fontWeight: 600, color: '#0F766E' }}>{shipment.package.condition}</span>
+                  </div>
+                )}
+
+                {shipment.verificationNotes && (
+                  <div style={{ backgroundColor: 'var(--color-very-light-blue)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}>
+                    <strong style={{ color: 'var(--color-primary-blue)' }}>Intake Note:</strong> {shipment.verificationNotes}
+                    {shipment.verifiedBy && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '2px' }}>
+                        Verified by {shipment.verifiedBy.name || 'Staff'} ({shipment.verifiedBy.role || 'STAFF'})
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Package Count:</span>
                   <span style={{ fontWeight: 600 }}>{shipment.package?.pieces || 1} piece(s)</span>
@@ -251,6 +290,32 @@ export default function ShipmentDetailsView({
                 </div>
               </div>
             </div>
+
+            {/* Operational Status History Card */}
+            {Array.isArray(shipment.statusHistory) && shipment.statusHistory.length > 0 && (
+              <div className="ace-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--color-border)', paddingBottom: '10px' }}>
+                  <ShieldCheck size={18} color="var(--color-primary-blue)" />
+                  <h3 style={{ fontSize: '15px', color: 'var(--color-primary-blue)', fontWeight: 700 }}>
+                    Status Audit History ({shipment.statusHistory.length})
+                  </h3>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {shipment.statusHistory.map((item, idx) => (
+                    <div key={idx} style={{ backgroundColor: 'var(--color-very-light-blue)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                        <StatusBadge status={item.status} />
+                        <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                          {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : ''}
+                        </span>
+                      </div>
+                      {item.note && <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>{item.note}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Sender & Receiver Card */}
             <div className="ace-card">

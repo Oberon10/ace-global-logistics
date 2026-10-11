@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { COUNTRY_LIST, getCitiesForCountry } from '../data/locations';
 import { generateTrackingNumber } from '../data/shipments';
+import StatusBadge from '../components/StatusBadge';
 
 export default function ShipmentCreationView({ 
   onShipmentCreated, 
@@ -178,106 +179,132 @@ export default function ShipmentCreationView({
 
   const cost = calculateCost();
 
-  const handleConfirmShipment = () => {
+  const handleConfirmShipment = async () => {
     if (isSubmitting || createdShipment) return;
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      // Auto-generate registered 12-character tracking code: ACE-XXXX-XXXXX (e.g. ACE-2T34-79011)
-      const newTrackingId = generateTrackingNumber();
+    // Auto-generate registered 12-character tracking code: ACE-XXXX-XXXXX (e.g. ACE-2T34-79011)
+    const newTrackingId = generateTrackingNumber();
 
-      const newShipment = {
-        id: newTrackingId,
-        trackingNumber: newTrackingId,
-        status: 'IN TRANSIT',
-        statusCode: 'transit',
-        method: formData.shippingMethod,
-        methodType: formData.shippingMethod.toLowerCase().includes('air') ? 'air' : 
-                    formData.shippingMethod.toLowerCase().includes('ocean') ? 'ocean' : 
-                    formData.shippingMethod.toLowerCase().includes('rail') ? 'rail' : 'road',
-        origin: `${formData.senderCity}, ${formData.senderCountry}`,
-        destination: `${formData.receiverCity}, ${formData.receiverCountry}`,
-        currentLocation: `${formData.senderCity} Hub (Consignment Dispatched)`,
-        estimatedDelivery: 'September 18, 2026',
-        createdDate: '2026-09-12',
-        customer: formData.senderCompany || formData.senderName,
-        sender: {
-          name: formData.senderName,
-          company: formData.senderCompany,
-          phone: formData.senderPhone,
-          email: formData.senderEmail,
-          address: formData.senderAddress,
-          city: formData.senderCity,
-          country: formData.senderCountry
+    const newShipment = {
+      id: newTrackingId,
+      trackingNumber: newTrackingId,
+      status: 'PENDING_VERIFICATION',
+      statusCode: 'pending',
+      method: formData.shippingMethod,
+      methodType: formData.shippingMethod.toLowerCase().includes('air') ? 'air' : 
+                  formData.shippingMethod.toLowerCase().includes('ocean') ? 'ocean' : 
+                  formData.shippingMethod.toLowerCase().includes('rail') ? 'rail' : 'road',
+      origin: `${formData.senderCity}, ${formData.senderCountry}`,
+      destination: `${formData.receiverCity}, ${formData.receiverCountry}`,
+      currentLocation: `${formData.senderCity} Intake Center (Awaiting Verification)`,
+      estimatedDelivery: 'September 18, 2026',
+      createdDate: new Date().toISOString().split('T')[0],
+      customer: formData.senderCompany || formData.senderName,
+      sender: {
+        name: formData.senderName,
+        company: formData.senderCompany,
+        phone: formData.senderPhone,
+        email: formData.senderEmail,
+        address: formData.senderAddress,
+        city: formData.senderCity,
+        country: formData.senderCountry
+      },
+      receiver: {
+        name: formData.receiverName,
+        company: formData.receiverCompany,
+        phone: formData.receiverPhone,
+        email: formData.receiverEmail,
+        address: formData.receiverAddress,
+        city: formData.receiverCity,
+        country: formData.receiverCountry
+      },
+      package: {
+        type: formData.packageType,
+        estimatedWeight: parseFloat(formData.weightKg) || 10,
+        weightKg: parseFloat(formData.weightKg) || 10,
+        estimatedDimensions: `${formData.lengthCm} × ${formData.widthCm} × ${formData.heightCm} cm`,
+        dimensions: `${formData.lengthCm} × ${formData.widthCm} × ${formData.heightCm} cm`,
+        pieces: parseInt(formData.pieces) || 1,
+        declaredValue: `$${parseFloat(formData.declaredValue || 0).toLocaleString()}`,
+        insurance: formData.insurance ? 'Full ACE All-Risk Coverage' : 'Standard Commercial Liability',
+        specialHandling: formData.notes || '',
+        sealNumber: `ACE-SL-${Math.floor(10000 + Math.random() * 90000)}`
+      },
+      charges: {
+        freight: cost.freight,
+        fuelSurcharge: cost.fuel,
+        customsHandling: cost.customs,
+        total: cost.total
+      },
+      timeline: [
+        {
+          id: 1,
+          title: 'Shipment Request Created',
+          description: 'Electronic shipping order registered with ACE Logistics. Pending physical intake.',
+          location: `${formData.senderCity}, ${formData.senderCountry}`,
+          date: 'Today',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: 'completed'
         },
-        receiver: {
-          name: formData.receiverName,
-          company: formData.receiverCompany,
-          phone: formData.receiverPhone,
-          email: formData.receiverEmail,
-          address: formData.receiverAddress,
-          city: formData.receiverCity,
-          country: formData.receiverCountry
+        {
+          id: 2,
+          title: 'Physical Package Verification',
+          description: 'Awaiting inspection, actual measurement and verification by ACE logistics staff.',
+          location: `${formData.senderCity} Intake Hub`,
+          date: 'Pending',
+          time: '--:--',
+          status: 'active'
         },
-        package: {
-          type: formData.packageType,
-          weightKg: parseFloat(formData.weightKg) || 10,
-          dimensions: `${formData.lengthCm} × ${formData.widthCm} × ${formData.heightCm} cm`,
-          pieces: parseInt(formData.pieces) || 1,
-          declaredValue: `$${parseFloat(formData.declaredValue || 0).toLocaleString()}`,
-          insurance: formData.insurance ? 'Full ACE All-Risk Coverage' : 'Standard Commercial Liability',
-          sealNumber: `ACE-SL-${Math.floor(10000 + Math.random() * 90000)}`
+        {
+          id: 3,
+          title: 'Ready for Dispatch',
+          description: 'Consignment manifest approved and staged for dispatch.',
+          location: `${formData.senderCity} Hub`,
+          date: 'Pending',
+          time: '--:--',
+          status: 'future'
         },
-        charges: {
-          freight: cost.freight,
-          fuelSurcharge: cost.fuel,
-          customsHandling: cost.customs,
-          total: cost.total
+        {
+          id: 4,
+          title: 'In Transit',
+          description: 'Carrier transit scheduled via priority intermodal route.',
+          location: `En route to ${formData.receiverCity}`,
+          date: 'Pending',
+          time: '--:--',
+          status: 'future'
         },
-        timeline: [
-          {
-            id: 1,
-            title: 'Shipment Created & Manifest Booked',
-            description: 'Electronic shipping order registered with ACE Logistics network.',
-            location: `${formData.senderCity}, ${formData.senderCountry}`,
-            date: 'Sep 12, 2026',
-            time: '08:00 AM',
-            status: 'completed'
-          },
-          {
-            id: 2,
-            title: 'Dispatch Pickup Assigned',
-            description: 'Consignment queued for priority dispatch courier pickup.',
-            location: `${formData.senderCity} Hub`,
-            date: 'Sep 12, 2026',
-            time: '10:30 AM',
-            status: 'active'
-          },
-          {
-            id: 3,
-            title: 'In Transit to Destination Hub',
-            description: 'Carrier transit scheduled via priority intermodal route.',
-            location: `En route to ${formData.receiverCity}`,
-            date: 'Sep 14, 2026',
-            time: 'Est. 02:00 PM',
-            status: 'future'
-          },
-          {
-            id: 4,
-            title: 'Delivered',
-            description: 'Final delivery and verified recipient signature.',
-            location: `${formData.receiverCity}, ${formData.receiverCountry}`,
-            date: 'Sep 18, 2026',
-            time: 'Est. 05:00 PM',
-            status: 'future'
-          }
-        ]
-      };
+        {
+          id: 5,
+          title: 'Out for Delivery',
+          description: 'Courier assigned for final destination handover.',
+          location: `${formData.receiverCity}`,
+          date: 'Pending',
+          time: '--:--',
+          status: 'future'
+        },
+        {
+          id: 6,
+          title: 'Delivered',
+          description: 'Consignment delivered and verified recipient signature recorded.',
+          location: `${formData.receiverCity}, ${formData.receiverCountry}`,
+          date: 'Pending',
+          time: '--:--',
+          status: 'future'
+        }
+      ]
+    };
 
-      setIsSubmitting(false);
+    try {
+      if (onShipmentCreated) {
+        await onShipmentCreated(newShipment);
+      }
       setCreatedShipment(newShipment);
-      onShipmentCreated(newShipment);
-    }, 600);
+    } catch (err) {
+      console.error('Shipment booking notice:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // SUCCESS STATE (Section 32)
@@ -298,33 +325,27 @@ export default function ShipmentCreationView({
               width: '64px',
               height: '64px',
               borderRadius: '50%',
-              backgroundColor: '#ECFDF5',
-              border: '2px solid #A7F3D0',
+              backgroundColor: '#FEF3C7',
+              border: '2px solid #FCD34D',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 20px',
-              color: '#10B981'
+              color: '#D97706'
             }}>
               <CheckCircle2 size={36} />
             </div>
 
-            <span style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              color: '#059669',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
-              Confirmation Completed
-            </span>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+              <StatusBadge status="PENDING_VERIFICATION" />
+            </div>
 
             <h2 style={{ fontSize: '24px', color: 'var(--color-primary-blue)', fontWeight: 800, marginTop: '4px', marginBottom: '8px' }}>
-              Shipment Created Successfully
+              Shipment Request Submitted
             </h2>
 
-            <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', marginBottom: '24px' }}>
-              Your cargo booking has been confirmed and assigned to the ACE Global Freight dispatch queue.
+            <p style={{ fontSize: '14.5px', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+              Your shipment booking has been logged as a <strong>Shipment Request</strong>. ACE Logistics operations staff will physically inspect your package, record official weight/dimensions, and verify the manifest before dispatch.
             </p>
 
             {/* Generated Tracking ID Card */}
@@ -342,7 +363,7 @@ export default function ShipmentCreationView({
                 {createdShipment.trackingNumber}
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                Estimated Delivery: {createdShipment.estimatedDelivery} • {createdShipment.method}
+                Current Operational Stage: <strong>Pending Verification</strong> • {createdShipment.method}
               </div>
             </div>
 
@@ -746,6 +767,21 @@ export default function ShipmentCreationView({
 
               <div className="package-specs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '16px' }}>
                 <div className="ace-form-group" style={{ gridColumn: '1 / -1' }}>
+                  <div style={{
+                    backgroundColor: 'var(--color-light-blue)',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    fontSize: '12.5px',
+                    color: 'var(--color-primary-blue)',
+                    lineHeight: 1.45,
+                    marginBottom: '6px'
+                  }}>
+                    <strong>Notice on Package Measurements:</strong> All weights and dimensions submitted here are recorded as <em>Customer Estimates</em>. When you deliver your package or our courier collects it, an ACE Logistics agent will inspect and record the official verified measurements.
+                  </div>
+                </div>
+
+                <div className="ace-form-group" style={{ gridColumn: '1 / -1' }}>
                   <label className="ace-label ace-label-required">Cargo Description</label>
                   <input
                     type="text"
@@ -758,7 +794,9 @@ export default function ShipmentCreationView({
                 </div>
 
                 <div className="ace-form-group">
-                  <label className="ace-label ace-label-required">Gross Weight (kg)</label>
+                  <label className="ace-label ace-label-required">
+                    Est. Gross Weight (kg)
+                  </label>
                   <input
                     type="number"
                     step="0.1"
@@ -783,7 +821,7 @@ export default function ShipmentCreationView({
                 </div>
 
                 <div className="ace-form-group">
-                  <label className="ace-label ace-label-required">Length (cm)</label>
+                  <label className="ace-label ace-label-required">Est. Length (cm)</label>
                   <input
                     type="number"
                     className="ace-input"
@@ -794,7 +832,7 @@ export default function ShipmentCreationView({
                 </div>
 
                 <div className="ace-form-group">
-                  <label className="ace-label ace-label-required">Width (cm)</label>
+                  <label className="ace-label ace-label-required">Est. Width (cm)</label>
                   <input
                     type="number"
                     className="ace-input"
@@ -805,7 +843,7 @@ export default function ShipmentCreationView({
                 </div>
 
                 <div className="ace-form-group">
-                  <label className="ace-label ace-label-required">Height (cm)</label>
+                  <label className="ace-label ace-label-required">Est. Height (cm)</label>
                   <input
                     type="number"
                     className="ace-input"
@@ -975,7 +1013,7 @@ export default function ShipmentCreationView({
                     Cargo Specs & Service
                   </div>
                   <div style={{ fontWeight: 600, fontSize: '14px' }}>{formData.packageType}</div>
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{formData.weightKg} kg • {formData.lengthCm}×{formData.widthCm}×{formData.heightCm} cm</div>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{formData.weightKg} kg (Est.) • {formData.lengthCm}×{formData.widthCm}×{formData.heightCm} cm (Est.)</div>
                   <div style={{ fontSize: '12px', color: 'var(--color-bright-action)', fontWeight: 600 }}>{formData.shippingMethod}</div>
                   <div style={{ fontSize: '11.5px', color: '#059669', fontWeight: 600 }}>Declared: ${formData.declaredValue} USD</div>
                 </div>
@@ -999,8 +1037,11 @@ export default function ShipmentCreationView({
                   <span style={{ fontWeight: 600 }}>${cost.customs}.00 USD</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 800, color: 'var(--color-primary-blue)', borderTop: '1px solid #bddcee', paddingTop: '10px' }}>
-                  <span>Total Calculated Shipping Cost:</span>
+                  <span>Estimated Total Shipping Cost:</span>
                   <span>${cost.total}.00 USD</span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                  * Final payable charges are subject to official package verification upon intake.
                 </div>
               </div>
             </div>
@@ -1043,7 +1084,7 @@ export default function ShipmentCreationView({
                 disabled={isSubmitting}
                 className="ace-btn ace-btn-action ace-btn-lg"
               >
-                <span>{isSubmitting ? 'Creating Shipment...' : 'Confirm Shipment'}</span>
+                <span>{isSubmitting ? 'Submitting Request...' : 'Submit Shipment Request'}</span>
                 <Check size={18} />
               </button>
             )}

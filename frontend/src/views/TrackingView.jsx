@@ -108,46 +108,70 @@ export default function TrackingView({
     return <Icon {...props} />;
   };
 
-  // Calculate Milestone Progress Stepper
+  // Calculate Milestone Progress Stepper (6-stage operational lifecycle)
   const getMilestoneSteps = () => {
-    const isDelivered = shipment?.status === 'DELIVERED';
-    const isPending = shipment?.status === 'PENDING';
-    const isInTransit = shipment?.status === 'IN TRANSIT' || (!isDelivered && !isPending);
+    const status = shipment?.status || 'PENDING_VERIFICATION';
+    const isDelivered = status === 'DELIVERED';
+    const isOutForDelivery = status === 'OUT_FOR_DELIVERY';
+    const isInTransit = status === 'IN_TRANSIT' || status === 'IN TRANSIT';
+    const isReadyForDispatch = status === 'READY_FOR_DISPATCH';
+    const isVerified = status === 'VERIFIED';
+    const isPendingVerification = status === 'PENDING_VERIFICATION';
+
+    // Step 1: Shipment Created
+    const s1Status = 'completed';
+    // Step 2: Physical Verification
+    const s2Status = isPendingVerification ? 'active' : 'completed';
+    // Step 3: Ready for Dispatch
+    const s3Status = (isPendingVerification) ? 'future' : isVerified ? 'active' : 'completed';
+    // Step 4: In Transit
+    const s4Status = (isPendingVerification || isVerified) ? 'future' : isReadyForDispatch ? 'active' : isInTransit ? 'active' : (isOutForDelivery || isDelivered) ? 'completed' : 'future';
+    // Step 5: Out for Delivery
+    const s5Status = (isDelivered) ? 'completed' : isOutForDelivery ? 'active' : 'future';
+    // Step 6: Delivered
+    const s6Status = isDelivered ? 'completed' : 'future';
 
     return [
       {
         id: 1,
-        name: 'Manifest Created',
+        name: 'Shipment Request Created',
         location: shipment?.origin || 'Origin Terminal',
-        status: 'completed',
+        status: s1Status,
         date: shipment?.createdDate || 'Booking Confirmed'
       },
       {
         id: 2,
-        name: 'Intake & Screening',
-        location: 'Export Cargo Hub',
-        status: isPending ? 'active' : 'completed',
-        date: isPending ? 'Under Security Scan' : 'Cleared for Transit'
+        name: 'Package Verified',
+        location: 'Intake Station',
+        status: s2Status,
+        date: isPendingVerification ? 'Awaiting Scale & Intake' : (shipment?.verifiedAt ? new Date(shipment.verifiedAt).toLocaleDateString() : 'Verified & Certified')
       },
       {
         id: 3,
-        name: 'In Transit',
-        location: shipment?.currentLocation || 'En Route',
-        status: isInTransit ? 'active' : isDelivered ? 'completed' : 'future',
-        date: isInTransit ? 'Satellite Monitored' : isDelivered ? 'Waypoint Cleared' : 'Scheduled'
+        name: 'Ready for Dispatch',
+        location: shipment?.origin ? `${shipment.origin.split(',')[0]} Hub` : 'Staging Bay',
+        status: s3Status,
+        date: (isPendingVerification || isVerified) ? 'Pending Staging' : 'Manifest Staged'
       },
       {
         id: 4,
-        name: 'Customs & Port Arrival',
-        location: shipment?.destination || 'Destination Depot',
-        status: isDelivered ? 'completed' : 'future',
-        date: isDelivered ? 'Customs Released' : 'ETA En Route'
+        name: 'Dispatched & In Transit',
+        location: shipment?.currentLocation || 'Linehaul Transit',
+        status: s4Status,
+        date: isInTransit ? 'Satellite Monitored' : (isOutForDelivery || isDelivered) ? 'Waypoint Cleared' : 'Scheduled'
       },
       {
         id: 5,
+        name: 'Out for Delivery',
+        location: shipment?.receiver?.city || shipment?.destination || 'Destination Depot',
+        status: s5Status,
+        date: isOutForDelivery ? 'Courier En Route' : isDelivered ? 'Delivery Run Complete' : 'Pending Hub Arrival'
+      },
+      {
+        id: 6,
         name: 'Final Delivery',
         location: shipment?.receiver?.city ? `${shipment.receiver.city}, ${shipment.receiver.country}` : 'Consignee Address',
-        status: isDelivered ? 'completed' : 'future',
+        status: s6Status,
         date: isDelivered ? `Delivered: ${shipment.estimatedDelivery}` : `Est: ${shipment?.estimatedDelivery}`
       }
     ];
@@ -711,6 +735,58 @@ export default function TrackingView({
                   <TrackingTimeline events={shipment.timeline} />
                 </div>
 
+                {/* Operational Status History & Audit Log */}
+                {Array.isArray(shipment.statusHistory) && shipment.statusHistory.length > 0 && (
+                  <div className="ace-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ShieldCheck size={18} color="var(--color-primary-blue)" />
+                        <h3 style={{ fontSize: '16px', color: 'var(--color-primary-blue)', fontWeight: 700 }}>
+                          Operational Status History & Audit Log
+                        </h3>
+                      </div>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        {shipment.statusHistory.length} Recorded Milestone(s)
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {shipment.statusHistory.map((item, idx) => (
+                        <div key={idx} style={{
+                          backgroundColor: 'var(--color-very-light-blue)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                          fontSize: '12.5px'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <StatusBadge status={item.status} />
+                              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                                By {item.changedByRole || 'OPERATIONS'}
+                              </span>
+                            </div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11.5px' }}>
+                              {item.timestamp ? new Date(item.timestamp).toLocaleString() : ''}
+                            </span>
+                          </div>
+                          {item.location && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--color-primary-blue)', fontWeight: 600, fontSize: '12px', marginTop: '2px' }}>
+                              <MapPin size={12} />
+                              <span>{item.location}</span>
+                            </div>
+                          )}
+                          {item.note && (
+                            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                              {item.note}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Carrier & Telemetry Diagnostics */}
                 <div className="ace-card">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--color-border)', paddingBottom: '12px' }}>
@@ -891,20 +967,67 @@ export default function TrackingView({
                       <strong style={{ color: 'var(--text-primary)', textAlign: 'right' }}>{shipment.package?.type || 'General Cargo'}</strong>
                     </div>
 
+                    {/* Weight: Estimated vs Verified */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Gross Weight:</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>Customer Estimated Weight:</span>
                       <span style={{ fontWeight: 600 }}>
-                        {shipment.package?.weightKg} kg 
-                        <span style={{ color: 'var(--text-muted)', fontSize: '12px', marginLeft: '4px' }}>
-                          ({(parseFloat(shipment.package?.weightKg || 10) * 2.20462).toFixed(1)} lbs)
-                        </span>
+                        {shipment.package?.estimatedWeight || shipment.package?.weightKg} kg
                       </span>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Dimensions (L × W × H):</span>
-                      <span style={{ fontWeight: 600 }}>{shipment.package?.dimensions || 'Standard Pallet'}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>Verified Official Weight:</span>
+                      {shipment.package?.actualWeight ? (
+                        <span style={{ fontWeight: 700, color: '#059669', backgroundColor: '#ECFDF5', padding: '2px 8px', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
+                          {shipment.package.actualWeight} kg (Verified)
+                        </span>
+                      ) : (
+                        <span style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12.5px' }}>
+                          Pending Physical Verification
+                        </span>
+                      )}
                     </div>
+
+                    {/* Dimensions */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Estimated Dimensions:</span>
+                      <span style={{ fontWeight: 600 }}>{shipment.package?.estimatedDimensions || shipment.package?.dimensions || 'Standard'}</span>
+                    </div>
+
+                    {shipment.package?.actualDimensions && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Verified Dimensions:</span>
+                        <span style={{ fontWeight: 700, color: 'var(--color-primary-blue)' }}>{shipment.package.actualDimensions}</span>
+                      </div>
+                    )}
+
+                    {/* Condition & Handling */}
+                    {shipment.package?.condition && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Intake Condition:</span>
+                        <span style={{ fontWeight: 600, color: '#0F766E' }}>{shipment.package.condition}</span>
+                      </div>
+                    )}
+
+                    {(shipment.package?.specialHandling || shipment.specialHandling) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Special Handling:</span>
+                        <span style={{ fontWeight: 600, color: '#D97706' }}>{shipment.package?.specialHandling || shipment.specialHandling}</span>
+                      </div>
+                    )}
+
+                    {/* Verification Notes */}
+                    {shipment.verificationNotes && (
+                      <div style={{ backgroundColor: 'var(--color-very-light-blue)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}>
+                        <strong style={{ color: 'var(--color-primary-blue)' }}>Intake Verification Note:</strong>
+                        <p style={{ margin: '2px 0 0', color: 'var(--text-secondary)' }}>{shipment.verificationNotes}</p>
+                        {shipment.verifiedBy && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            Verified by: {shipment.verifiedBy.name || 'Staff'} ({shipment.verifiedBy.role || 'STAFF'})
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Quantity / Pieces:</span>
