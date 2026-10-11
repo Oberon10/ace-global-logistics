@@ -288,77 +288,8 @@ export const register = async (req, res) => {
             });
         }
 
-        const requestedRole = (role || "CUSTOMER").toUpperCase();
-
-        // 1. If registering as STAFF -> persist in Staff collection
-        if (requestedRole === "STAFF" || requestedRole === "DISPATCHER") {
-            const newStaff = await Staff.create({
-                name: name.trim(),
-                email: normalizedEmail,
-                password: password,
-                role: requestedRole,
-                employeeId: `ACE-STF-${Math.floor(1000 + Math.random() * 9000)}`,
-                department: department || company || "Terminal Dispatch",
-                station: station || "Global Dispatch",
-                phone: phone || "",
-                status: "ACTIVE"
-            });
-
-            const token = generateToken(newStaff, "STAFF");
-
-            return res.status(201).json({
-                success: true,
-                message: "Staff member registered successfully in MongoDB.",
-                token,
-                user: {
-                    id: newStaff._id,
-                    _id: newStaff._id,
-                    name: newStaff.name,
-                    email: newStaff.email,
-                    role: newStaff.role,
-                    department: newStaff.department,
-                    station: newStaff.station,
-                    phone: newStaff.phone,
-                    userType: "STAFF",
-                    createdAt: newStaff.createdAt
-                }
-            });
-        }
-
-        // 2. If registering as ADMIN -> persist in Admin collection
-        if (requestedRole === "ADMIN") {
-            const newAdmin = await Admin.create({
-                name: name.trim(),
-                email: normalizedEmail,
-                password: password,
-                role: "ADMIN",
-                title: "Systems Administrator",
-                department: department || "Operations Command",
-                phone: phone || "",
-                status: "ACTIVE"
-            });
-
-            const token = generateToken(newAdmin, "ADMIN");
-
-            return res.status(201).json({
-                success: true,
-                message: "Administrator registered successfully in MongoDB.",
-                token,
-                user: {
-                    id: newAdmin._id,
-                    _id: newAdmin._id,
-                    name: newAdmin.name,
-                    email: newAdmin.email,
-                    role: newAdmin.role,
-                    department: newAdmin.department,
-                    phone: newAdmin.phone,
-                    userType: "ADMIN",
-                    createdAt: newAdmin.createdAt
-                }
-            });
-        }
-
-        // 3. Standard CUSTOMER registration -> persist in User collection
+        // Public registration is strictly restricted to CUSTOMER role.
+        // Never trust role from frontend to create Staff or Admin.
         const newUser = await User.create({
             name: name.trim(),
             email: normalizedEmail,
@@ -367,7 +298,7 @@ export const register = async (req, res) => {
             phone: phone || "",
             company: company || "",
             country: country || "Ghana",
-            items: items || ""
+            items: items || "General Cargo"
         });
 
         const token = generateToken(newUser, "CUSTOMER");
@@ -405,7 +336,7 @@ export const register = async (req, res) => {
  */
 export const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, portal } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({
@@ -415,6 +346,7 @@ export const login = async (req, res) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
+        const requestedPortal = portal ? String(portal).trim().toLowerCase() : null;
 
         // -------------------------------------------------------------
         // 1. Check Admin model strictly for administrator credentials
@@ -426,6 +358,14 @@ export const login = async (req, res) => {
                 return res.status(401).json({
                     success: false,
                     message: "Invalid email or password credentials."
+                });
+            }
+
+            // Portal clearance enforcement for Admin account
+            if (requestedPortal && requestedPortal !== "admin") {
+                return res.status(403).json({
+                    success: false,
+                    message: "Unauthorized access. This account is registered as administrator. Please use the admin login portal."
                 });
             }
 
@@ -472,6 +412,14 @@ export const login = async (req, res) => {
                 });
             }
 
+            // Portal clearance enforcement for Staff account
+            if (requestedPortal && requestedPortal !== "staff") {
+                return res.status(403).json({
+                    success: false,
+                    message: "Unauthorized access. This account is registered as operational staff. Please use the staff login portal."
+                });
+            }
+
             // Update staff login timestamp
             staff.lastLogin = new Date();
             await staff.save();
@@ -515,6 +463,26 @@ export const login = async (req, res) => {
                 return res.status(401).json({
                     success: false,
                     message: "Invalid email or password credentials."
+                });
+            }
+
+            // Portal clearance enforcement for Customer account
+            if (requestedPortal && requestedPortal !== "customer") {
+                if (requestedPortal === "staff") {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Unauthorized access. This account is not registered as staff. Please use the correct login portal."
+                    });
+                }
+                if (requestedPortal === "admin") {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Unauthorized access. This account is not registered as administrator. Please use the customer login portal."
+                    });
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: "Unauthorized access. This account is registered as customer. Please use the customer login portal."
                 });
             }
 
@@ -694,6 +662,14 @@ export const createStaff = async (req, res) => {
             });
         }
 
+        // Authorization check: if an authenticated token is provided, only ADMIN or SUPER_ADMIN may create staff
+        if (req.user && !["ADMIN", "SUPER_ADMIN"].includes((req.user.role || "").toUpperCase())) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Only administrators are authorized to create staff accounts."
+            });
+        }
+
         const normalizedEmail = email.trim().toLowerCase();
 
         // Cross-collection uniqueness validation
@@ -763,6 +739,14 @@ export const createAdmin = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Admin name, email, and password are required."
+            });
+        }
+
+        // Authorization check: if an authenticated token is provided, only ADMIN or SUPER_ADMIN may create admin
+        if (req.user && !["ADMIN", "SUPER_ADMIN"].includes((req.user.role || "").toUpperCase())) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Only administrators are authorized to create administrator accounts."
             });
         }
 
@@ -946,6 +930,14 @@ export const updateUser = async (req, res) => {
 export const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
+
+        // Authorization check: only Admin can delete users
+        if (req.user && !["ADMIN", "SUPER_ADMIN"].includes((req.user.role || "").toUpperCase())) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Only administrators are authorized to delete user accounts."
+            });
+        }
 
         let deleted = null;
         if (mongoose.Types.ObjectId.isValid(id)) {

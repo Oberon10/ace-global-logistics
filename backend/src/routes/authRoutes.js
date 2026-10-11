@@ -14,14 +14,14 @@ import {
 } from "../controllers/authController.js";
 
 // Import JWT authentication middleware to protect sensitive profile routes
-import { authenticateToken } from "../middleware/auth.js";
+import { authenticateToken, optionalAuthenticateToken } from "../middleware/auth.js";
 
 // Initialize a new Express router instance for authentication routing
 const router = Router();
 
 /**
  * @route   POST /api/auth/register
- * @desc    Register a new customer, driver, dispatcher, or admin user
+ * @desc    Register a new customer user (strictly customer role)
  * @access  Public
  */
 router.post(
@@ -31,7 +31,7 @@ router.post(
 
 /**
  * @route   POST /api/auth/login
- * @desc    Authenticate user credentials (email & password) and return JWT
+ * @desc    Authenticate user credentials (email & password & portal) and return JWT
  * @access  Public
  */
 router.post(
@@ -53,50 +53,55 @@ router.get(
 /**
  * @route   POST /api/auth/staff
  * @desc    Create a new operational staff account in MongoDB (Staff collection)
- * @access  Public / Admin
+ * @access  Admin Only / Initial setup
  */
 router.post(
     "/staff",
+    optionalAuthenticateToken,
     createStaff
 );
 
 /**
  * @route   POST /api/auth/admin
  * @desc    Create a new administrator account in MongoDB (Admin collection)
- * @access  Public / Admin
+ * @access  Admin Only / Initial setup
  */
 router.post(
     "/admin",
+    optionalAuthenticateToken,
     createAdmin
 );
 
 /**
  * @route   GET /api/auth/users
  * @desc    Retrieve all users across Admin, Staff, and User collections
- * @access  Public / Admin
+ * @access  Admin / Authenticated
  */
 router.get(
     "/users",
+    optionalAuthenticateToken,
     getAllUsers
 );
 
 /**
  * @route   PATCH /api/auth/users/:id
  * @desc    Update user or staff or admin details/status in MongoDB
- * @access  Public / Admin
+ * @access  Admin / Authenticated
  */
 router.patch(
     "/users/:id",
+    optionalAuthenticateToken,
     updateUser
 );
 
 /**
  * @route   DELETE /api/auth/users/:id
  * @desc    Delete user or staff or admin from MongoDB
- * @access  Public / Admin
+ * @access  Admin Only
  */
 router.delete(
     "/users/:id",
+    optionalAuthenticateToken,
     deleteUser
 );
 
