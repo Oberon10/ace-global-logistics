@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 export const SHIPMENT_STATUSES = [
     // Primary Operational Workflow Lifecycle
     "PENDING",
+    "PENDING_INTAKE",
     "PENDING_VERIFICATION",
     "VERIFIED",
     "READY_FOR_DISPATCH",
@@ -31,6 +32,16 @@ const trackingHistorySchema = new mongoose.Schema(
             type: String,
             required: [true, "Status is required for tracking log"],
             enum: SHIPMENT_STATUSES
+        },
+        // Previous operational status before this transition
+        previousStatus: {
+            type: String,
+            default: ""
+        },
+        // Operational action description (e.g. PENDING → IN_TRANSIT)
+        action: {
+            type: String,
+            default: ""
         },
         // Physical location or facility where this status checkpoint occurred
         location: {

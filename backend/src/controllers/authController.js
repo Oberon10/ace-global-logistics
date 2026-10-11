@@ -960,6 +960,63 @@ export const deleteUser = async (req, res) => {
     }
 };
 
+/**
+ * Controller: Secure Password Reset for Admin / Authorized Account Management.
+ * Passwords are NEVER revealed or returned in plaintext.
+ * Securely hashes new password with bcrypt before updating MongoDB.
+ */
+export const resetPassword = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { newPassword } = req.body;
+
+        const callerRole = (req.user?.role || "").toUpperCase();
+        if (req.user && !["ADMIN", "SUPER_ADMIN"].includes(callerRole)) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Only administrators are authorized to reset user passwords."
+            });
+        }
+
+        if (!newPassword || typeof newPassword !== "string" || newPassword.trim().length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "New password must be at least 6 characters long."
+            });
+        }
+
+        const filter = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { email: id.trim().toLowerCase() };
+        let targetUser = await User.findOne(filter) 
+                      || await Staff.findOne(filter) 
+                      || await Admin.findOne(filter);
+
+        if (!targetUser) {
+            return res.status(404).json({
+                success: false,
+                message: "User account not found in database."
+            });
+        }
+
+        // Hash new password using bcrypt
+        const salt = await bcrypt.genSalt(10);
+        targetUser.password = await bcrypt.hash(newPassword.trim(), salt);
+        targetUser.passwordLastChanged = new Date();
+        await targetUser.save();
+
+        return res.status(200).json({
+            success: true,
+            message: `Password has been reset securely for ${targetUser.email}.`
+        });
+    } catch (error) {
+        console.error("❌ Error in resetPassword controller:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to reset password in database.",
+            error: error.message
+        });
+    }
+};
+
 export default {
     register,
     login,
@@ -969,5 +1026,6 @@ export default {
     createAdmin,
     getAllUsers,
     updateUser,
-    deleteUser
+    deleteUser,
+    resetPassword
 };

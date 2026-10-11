@@ -10,7 +10,8 @@ import {
     createAdmin, 
     getAllUsers, 
     updateUser, 
-    deleteUser 
+    deleteUser,
+    resetPassword
 } from "../controllers/authController.js";
 
 // Import JWT authentication middleware to protect sensitive profile routes
@@ -92,6 +93,17 @@ router.patch(
     "/users/:id",
     optionalAuthenticateToken,
     updateUser
+);
+
+/**
+ * @route   POST /api/auth/users/:id/reset-password
+ * @desc    Securely reset a user password (hashed with bcrypt)
+ * @access  Admin Only
+ */
+router.post(
+    "/users/:id/reset-password",
+    optionalAuthenticateToken,
+    resetPassword
 );
 
 /**

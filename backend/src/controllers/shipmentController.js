@@ -13,18 +13,20 @@ import { createNotification } from "./notificationController.js";
  * PENDING_VERIFICATION -> VERIFIED -> READY_FOR_DISPATCH -> IN_TRANSIT -> OUT_FOR_DELIVERY -> DELIVERED
  */
 const ALLOWED_STATUS_TRANSITIONS = {
-    "PENDING": ["VERIFIED", "IN_TRANSIT", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
-    "PENDING_VERIFICATION": ["VERIFIED", "IN_TRANSIT", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
-    "VERIFIED": ["READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "ON_HOLD", "CANCELLED"],
+    "PENDING": ["IN_TRANSIT", "VERIFIED", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
+    "PENDING_INTAKE": ["IN_TRANSIT", "VERIFIED", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
+    "PENDING_VERIFICATION": ["IN_TRANSIT", "VERIFIED", "READY_FOR_DISPATCH", "REJECTED", "CANCELLED", "ON_HOLD"],
+    "VERIFIED": ["IN_TRANSIT", "OUT_FOR_DELIVERY", "READY_FOR_DISPATCH", "ON_HOLD", "CANCELLED"],
     "READY_FOR_DISPATCH": ["IN_TRANSIT", "OUT_FOR_DELIVERY", "ON_HOLD", "CANCELLED"],
     "IN_TRANSIT": ["OUT_FOR_DELIVERY", "DELIVERED", "ON_HOLD", "DELIVERY_FAILED", "RETURNED"],
     "OUT_FOR_DELIVERY": ["DELIVERED", "DELIVERY_FAILED", "RETURNED", "ON_HOLD"],
     "DELIVERY_FAILED": ["OUT_FOR_DELIVERY", "RETURNED", "ON_HOLD", "DELIVERED"],
-    "ON_HOLD": ["PENDING", "PENDING_VERIFICATION", "VERIFIED", "READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "CANCELLED"],
+    "ON_HOLD": ["PENDING", "PENDING_INTAKE", "PENDING_VERIFICATION", "VERIFIED", "READY_FOR_DISPATCH", "IN_TRANSIT", "OUT_FOR_DELIVERY", "CANCELLED"],
     // Backward compatibility mappings for legacy data
-    "ORDER_CREATED": ["PENDING", "PENDING_VERIFICATION", "VERIFIED", "PICKED_UP", "IN_TRANSIT", "CANCELLED"],
+    "ORDER_CREATED": ["PENDING", "PENDING_INTAKE", "PENDING_VERIFICATION", "VERIFIED", "PICKED_UP", "IN_TRANSIT", "CANCELLED"],
     "PICKED_UP": ["IN_TRANSIT", "READY_FOR_DISPATCH", "ON_HOLD"],
-    "RETURNED": ["ON_HOLD", "DELIVERED"]
+    "RETURNED": ["ON_HOLD", "DELIVERED"],
+    "DELIVERED": []
 };
 
 /**
@@ -390,13 +392,22 @@ export const verifyShipment = async (req, res) => {
             location
         } = req.body;
 
-        // Role authorization check: only staff or admin may verify
+        // Role authorization check: only authenticated staff or admin may verify
         const userRole = (req.user?.role || "").toUpperCase();
-        const allowedRoles = ["STAFF", "DISPATCHER", "OPERATOR", "WAREHOUSE_OPERATOR", "CUSTOMS_OFFICER", "TERMINAL_DISPATCHER", "ADMIN", "SUPER_ADMIN"];
-        if (req.user && !allowedRoles.includes(userRole)) {
+        const userType = (req.user?.userType || "").toUpperCase();
+        const allowedRoles = ["STAFF", "DISPATCHER", "OPERATOR", "WAREHOUSE_OPERATOR", "CUSTOMS_OFFICER", "TERMINAL_DISPATCHER", "ADMIN", "SUPER_ADMIN", "SYSTEM_ADMIN"];
+
+        if (userRole === "CUSTOMER" || userRole === "CLIENT" || userRole === "USER" || userType === "CUSTOMER") {
             return res.status(403).json({
                 success: false,
-                message: `Forbidden: User role '${userRole}' is not authorized to verify shipments. Staff credentials required.`
+                message: "Forbidden: Customers are not permitted to verify shipments. Staff credentials required."
+            });
+        }
+
+        if (!req.user || (!allowedRoles.includes(userRole) && userType !== "STAFF" && userType !== "ADMIN")) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized: Staff or Admin credentials required to verify shipments."
             });
         }
 
@@ -523,12 +534,26 @@ export const updateShipmentStatus = async (req, res) => {
         const { id } = req.params;
         const { status, location, description, note } = req.body;
 
-        // Role authorization check: customers must never manually change status
+        // Role authorization check: only authenticated Staff or Admin users can update shipment status
         const userRole = (req.user?.role || "GUEST").toUpperCase();
-        if (userRole === "CUSTOMER" || userRole === "CLIENT" || userRole === "USER") {
+        const userType = (req.user?.userType || "").toUpperCase();
+
+        if (userRole === "CUSTOMER" || userRole === "CLIENT" || userRole === "USER" || userType === "CUSTOMER") {
             return res.status(403).json({
                 success: false,
                 message: "Forbidden: Customers are not permitted to change shipment status. Status is managed by operations staff."
+            });
+        }
+
+        const isAuthorizedStaffOrAdmin = [
+            "STAFF", "DISPATCHER", "OPERATOR", "WAREHOUSE_OPERATOR", 
+            "CUSTOMS_OFFICER", "TERMINAL_DISPATCHER", "ADMIN", "SUPER_ADMIN", "SYSTEM_ADMIN"
+        ].includes(userRole) || userType === "STAFF" || userType === "ADMIN";
+
+        if (!req.user || !isAuthorizedStaffOrAdmin) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized: Authentication as Staff or Admin is required to change shipment status."
             });
         }
 
@@ -579,8 +604,10 @@ export const updateShipmentStatus = async (req, res) => {
         // Construct history log
         const newHistoryLog = {
             status: normalizedStatus,
+            previousStatus: currentStatus,
+            action: `${currentStatus} → ${normalizedStatus}`,
             location: checkpointLocation,
-            description: description || `Consignment advanced to ${normalizedStatus.replace(/_/g, ' ')}.`,
+            description: description || `Consignment advanced from ${currentStatus.replace(/_/g, ' ')} to ${normalizedStatus.replace(/_/g, ' ')}.`,
             note: auditNote,
             timestamp: new Date(),
             updatedBy: req.user?.id || null,
