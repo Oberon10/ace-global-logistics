@@ -161,31 +161,6 @@ export default function AdminLayout({ children }) {
               Sign In as Administrator
             </Link>
 
-            {/* Quick Demo Authorize button */}
-            <button
-              type="button"
-              onClick={quickAuthorizeAdmin}
-              className="ace-btn"
-              style={{
-                width: '100%',
-                height: '42px',
-                backgroundColor: 'rgba(22, 131, 216, 0.15)',
-                color: '#38BDF8',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
-                fontWeight: 700,
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                borderRadius: '8px'
-              }}
-            >
-              <Sparkles size={15} />
-              <span>Quick-Authorize as Admin (Demo Mode)</span>
-            </button>
-
             {/* Clear Back to Website Option */}
             <Link
               href="/"

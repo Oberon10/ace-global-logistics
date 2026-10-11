@@ -357,7 +357,7 @@ export const login = async (req, res) => {
             if (!isMatch) {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid email or password credentials."
+                    message: "Your login details could not be verified. Please check your credentials and try again."
                 });
             }
 
@@ -365,7 +365,7 @@ export const login = async (req, res) => {
             if (requestedPortal && requestedPortal !== "admin") {
                 return res.status(403).json({
                     success: false,
-                    message: "Unauthorized access. This account is registered as administrator. Please use the admin login portal."
+                    message: "This account is not authorized to access this portal."
                 });
             }
 
@@ -408,7 +408,7 @@ export const login = async (req, res) => {
             if (!isMatch) {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid email or password credentials."
+                    message: "Your login details could not be verified. Please check your credentials and try again."
                 });
             }
 
@@ -416,7 +416,7 @@ export const login = async (req, res) => {
             if (requestedPortal && requestedPortal !== "staff") {
                 return res.status(403).json({
                     success: false,
-                    message: "Unauthorized access. This account is registered as operational staff. Please use the staff login portal."
+                    message: "This account is not authorized to access this portal."
                 });
             }
 
@@ -462,27 +462,15 @@ export const login = async (req, res) => {
             if (!isMatch) {
                 return res.status(401).json({
                     success: false,
-                    message: "Invalid email or password credentials."
+                    message: "Your login details could not be verified. Please check your credentials and try again."
                 });
             }
 
             // Portal clearance enforcement for Customer account
             if (requestedPortal && requestedPortal !== "customer") {
-                if (requestedPortal === "staff") {
-                    return res.status(403).json({
-                        success: false,
-                        message: "Unauthorized access. This account is not registered as staff. Please use the correct login portal."
-                    });
-                }
-                if (requestedPortal === "admin") {
-                    return res.status(403).json({
-                        success: false,
-                        message: "Unauthorized access. This account is not registered as administrator. Please use the customer login portal."
-                    });
-                }
                 return res.status(403).json({
                     success: false,
-                    message: "Unauthorized access. This account is registered as customer. Please use the customer login portal."
+                    message: "This account is not authorized to access this portal."
                 });
             }
 
@@ -516,7 +504,7 @@ export const login = async (req, res) => {
         // No matching account found across Admin, Staff, or User
         return res.status(401).json({
             success: false,
-            message: "Invalid email or password credentials."
+            message: "Your login details could not be verified. Please check your credentials and try again."
         });
     } catch (error) {
         console.error("❌ Error in login controller:", error);
