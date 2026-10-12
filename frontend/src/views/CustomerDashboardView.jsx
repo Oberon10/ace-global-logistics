@@ -43,7 +43,7 @@ export default function CustomerDashboardView({
   activeRole = 'customer',
   setActiveRole
 }) {
-  const app = useApp ? useApp() : {};
+  const app = useApp();
   const notifications = app.notifications || [];
   const unreadNotifCount = app.unreadNotifCount || 0;
   const handleMarkNotificationRead = app.handleMarkNotificationRead;

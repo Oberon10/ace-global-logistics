@@ -21,6 +21,12 @@ import {
 export default function AdminSettingsPage() {
   const { navigate, activeRole, isHydrated, setActiveRole, handleLoginSuccess, theme, toggleTheme } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [apiPort, setApiPort] = useState('5000');
+  const [telemetryInterval, setTelemetryInterval] = useState('15');
+  const [emailAlerts, setEmailAlerts] = useState(true);
+  const [smsAlerts, setSmsAlerts] = useState(false);
+  const [autoFallback, setAutoFallback] = useState(true);
+  const [environment, setEnvironment] = useState('production');
 
   if (!isHydrated) {
     return null;
@@ -38,14 +44,6 @@ export default function AdminSettingsPage() {
       />
     );
   }
-
-  // Settings state
-  const [apiPort, setApiPort] = useState('5000');
-  const [telemetryInterval, setTelemetryInterval] = useState('15');
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [smsAlerts, setSmsAlerts] = useState(false);
-  const [autoFallback, setAutoFallback] = useState(true);
-  const [environment, setEnvironment] = useState('production');
 
   const handleSave = (e) => {
     e.preventDefault();

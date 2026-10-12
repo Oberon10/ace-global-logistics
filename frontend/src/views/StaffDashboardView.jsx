@@ -40,7 +40,7 @@ export default function StaffDashboardView({
   activeRole = 'staff',
   setActiveRole 
 }) {
-  const app = useApp ? useApp() : {};
+  const app = useApp();
   const verifyHandler = onVerifyShipment || app.handleVerifyShipment;
   const updateStatusHandler = onUpdateShipmentStatus || app.handleUpdateShipmentStatus;
   const createShipmentHandler = onCreateShipment || app.handleShipmentCreated;

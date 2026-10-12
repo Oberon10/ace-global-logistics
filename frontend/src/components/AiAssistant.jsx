@@ -562,9 +562,17 @@ export default function AiAssistant({
 
     // Persist prompt to MongoDB via backend /api/chat endpoint
     try {
-      const chatApiUrl = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:5000/api/chat'
-        : '/api/chat';
+      const getChatApiBase = () => {
+        if (typeof window !== 'undefined') {
+          if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'http://localhost:5000';
+          }
+        }
+        return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
+      };
+
+      const chatApiUrl = `${getChatApiBase()}/api/chat`;
 
       fetch(chatApiUrl, {
         method: 'POST',

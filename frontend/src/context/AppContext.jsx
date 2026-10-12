@@ -176,12 +176,12 @@ export function AppProvider({ children }) {
   // API Base URL helper
   const getApiBase = () => {
     if (typeof window !== 'undefined') {
-      if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+      if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return 'http://localhost:5000';
       }
     }
-    return process.env.NEXT_PUBLIC_API_URL || '';
+    return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
   };
 
   // Central Reactive Shipments Repository strictly retrieved from MongoDB Atlas

@@ -39,7 +39,7 @@ export default function AdminDashboardView({
   setActiveRole,
   currentView = 'admin-dashboard'
 }) {
-  const app = useApp ? useApp() : {};
+  const app = useApp();
   const adminStats = app.adminStats || null;
   const isLoadingStats = app.isLoadingStats || false;
   const fetchAdminStats = app.fetchAdminStats;
