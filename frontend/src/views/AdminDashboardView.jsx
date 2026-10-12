@@ -34,6 +34,7 @@ export default function AdminDashboardView({
   shipments = [], 
   onSelectShipment, 
   onViewReceipt, 
+  onUpdateShipmentStatus,
   setView, 
   setActiveRole,
   currentView = 'admin-dashboard'
@@ -43,6 +44,7 @@ export default function AdminDashboardView({
   const isLoadingStats = app.isLoadingStats || false;
   const fetchAdminStats = app.fetchAdminStats;
   const handleCancelShipment = app.handleCancelShipment;
+  const updateStatusHandler = onUpdateShipmentStatus || app.handleUpdateShipmentStatus;
 
   const [activeTab, setActiveTab] = useState('overview');
   const [filterMode, setFilterMode] = useState('ALL');
@@ -123,6 +125,7 @@ export default function AdminDashboardView({
     return st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED';
   }).length;
   const countTransit = shipments.filter(s => getStatusKey(s) === 'IN_TRANSIT').length;
+  const countArrived = shipments.filter(s => getStatusKey(s) === 'ARRIVED_AT_FACILITY').length;
   const countOut = shipments.filter(s => getStatusKey(s) === 'OUT_FOR_DELIVERY').length;
   const countDelivered = shipments.filter(s => getStatusKey(s) === 'DELIVERED').length;
 
@@ -132,6 +135,7 @@ export default function AdminDashboardView({
     VERIFIED: shipments.filter(s => getStatusKey(s) === 'VERIFIED').length,
     READY_FOR_DISPATCH: shipments.filter(s => getStatusKey(s) === 'READY_FOR_DISPATCH').length,
     IN_TRANSIT: countTransit,
+    ARRIVED_AT_FACILITY: countArrived,
     OUT_FOR_DELIVERY: countOut,
     DELIVERED: countDelivered,
     CANCELLED: shipments.filter(s => getStatusKey(s) === 'CANCELLED').length,
@@ -391,6 +395,7 @@ export default function AdminDashboardView({
               { label: 'Verified', count: statusCounts.VERIFIED || 0, color: '#0F766E', bg: '#CCFBF1' },
               { label: 'Ready for Dispatch', count: statusCounts.READY_FOR_DISPATCH || 0, color: '#4338CA', bg: '#E0E7FF' },
               { label: 'In Transit', count: statusCounts.IN_TRANSIT || 0, color: '#0284C7', bg: '#E0F2FE' },
+              { label: 'Arrived at Facility', count: statusCounts.ARRIVED_AT_FACILITY || 0, color: '#4F46E5', bg: '#EEF2FF' },
               { label: 'Out for Delivery', count: statusCounts.OUT_FOR_DELIVERY || 0, color: '#0891B2', bg: '#CFFAFE' },
               { label: 'Delivered', count: statusCounts.DELIVERED || 0, color: '#059669', bg: '#ECFDF5' },
               { label: 'Cancelled / Exceptions', count: (statusCounts.CANCELLED || 0) + (statusCounts.REJECTED || 0), color: '#DC2626', bg: '#FEE2E2' }
@@ -605,6 +610,8 @@ export default function AdminDashboardView({
           onSelectShipment={onSelectShipment}
           onViewReceipt={onViewReceipt}
           onCancelShipment={handleOpenCancelModal}
+          onUpdateShipmentStatus={updateStatusHandler}
+          activeRole="admin"
         />
 
         {/* ===================================================

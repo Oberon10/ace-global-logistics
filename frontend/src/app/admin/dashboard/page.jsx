@@ -14,6 +14,7 @@ export default function AdminDashboardPage() {
     handleSelectShipment, 
     handleOpenReceipt, 
     navigate, 
+    handleUpdateShipmentStatus,
     setActiveRole,
     theme,
     toggleTheme 
@@ -42,6 +43,7 @@ export default function AdminDashboardPage() {
       shipments={shipments}
       onSelectShipment={handleSelectShipment}
       onViewReceipt={handleOpenReceipt}
+      onUpdateShipmentStatus={handleUpdateShipmentStatus}
       setView={navigate}
       setActiveRole={setActiveRole}
     />

@@ -24,7 +24,8 @@ import {
   Eye,
   XCircle,
   AlertOctagon,
-  AlertTriangle
+  AlertTriangle,
+  Building2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { generateTrackingNumber } from '../data/shipments';
@@ -252,6 +253,12 @@ export default function StaffDashboardView({
       confirmBtnText = 'Confirm & Move to Transit';
       defaultLoc = defaultLoc || `Dispatched from ${target.sender?.city || 'Accra'} Hub en route to ${target.receiver?.city || target.destination}`;
       defaultNote = defaultNote || 'Package acknowledged and dispatched into active linehaul transit.';
+    } else if (nextStatus === 'ARRIVED_AT_FACILITY') {
+      title = 'Record Arrival at Logistics Facility?';
+      description = 'This marks the consignment as received and checked into an intermediate regional distribution facility.';
+      confirmBtnText = 'Confirm Arrival at Facility';
+      defaultLoc = defaultLoc || `${target.destination ? target.destination.split(',')[0] : 'Regional'} Distribution Hub`;
+      defaultNote = defaultNote || 'Consignment arrived and processed at intermediate logistics terminal facility.';
     } else if (nextStatus === 'OUT_FOR_DELIVERY') {
       title = 'Mark Out for Delivery?';
       description = 'This will assign the consignment to final-mile delivery courier dispatch.';
@@ -687,7 +694,38 @@ export default function StaffDashboardView({
                     {getStatusKey(activeShipment) === 'IN_TRANSIT' ? (
                       <div>
                         <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
-                          Consignment is currently in active carrier line haul. When destination terminal is reached, advance to final delivery courier run.
+                          Consignment is currently in active carrier line haul. Record arrival when received at intermediate facility, or mark out for final delivery.
+                        </p>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => requestStatusTransition(activeShipment, 'ARRIVED_AT_FACILITY')}
+                            disabled={isSubmitting}
+                            className="ace-btn ace-btn-secondary"
+                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          >
+                            <Building2 size={18} />
+                            <span>Arrived at Facility</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => requestStatusTransition(activeShipment, 'OUT_FOR_DELIVERY')}
+                            disabled={isSubmitting}
+                            className="ace-btn ace-btn-action"
+                            style={{ flex: 1, minWidth: '160px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          >
+                            <Send size={18} />
+                            <span>Mark Out for Delivery</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* 4b. If ARRIVED_AT_FACILITY */}
+                    {getStatusKey(activeShipment) === 'ARRIVED_AT_FACILITY' ? (
+                      <div>
+                        <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.45 }}>
+                          Consignment received at terminal facility. Hand over to courier driver for final mile delivery run.
                         </p>
                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                           <button
@@ -698,7 +736,7 @@ export default function StaffDashboardView({
                             style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                           >
                             <Send size={18} />
-                            <span>Mark Out for Delivery</span>
+                            <span>Dispatch Out for Delivery</span>
                           </button>
                         </div>
                       </div>
@@ -1016,14 +1054,36 @@ export default function StaffDashboardView({
                             </>
                           )}
                           {isInTransit && (
+                            <>
+                              <button
+                                onClick={() => requestStatusTransition(s, 'ARRIVED_AT_FACILITY')}
+                                className="ace-btn ace-btn-secondary ace-btn-sm"
+                                style={{ fontSize: '11.5px', padding: '4px 8px' }}
+                                title="Mark arrived at logistics facility"
+                              >
+                                <Building2 size={12} />
+                                <span>Arrived Facility</span>
+                              </button>
+                              <button
+                                onClick={() => requestStatusTransition(s, 'OUT_FOR_DELIVERY')}
+                                className="ace-btn ace-btn-action ace-btn-sm"
+                                style={{ fontSize: '11.5px', padding: '4px 10px' }}
+                                title="Advance to final delivery run"
+                              >
+                                <Send size={12} />
+                                <span>Out for Delivery</span>
+                              </button>
+                            </>
+                          )}
+                          {st === 'ARRIVED_AT_FACILITY' && (
                             <button
                               onClick={() => requestStatusTransition(s, 'OUT_FOR_DELIVERY')}
                               className="ace-btn ace-btn-action ace-btn-sm"
                               style={{ fontSize: '11.5px', padding: '4px 10px' }}
-                              title="Advance to final delivery run"
+                              title="Assign package to delivery courier run"
                             >
                               <Send size={12} />
-                              <span>Mark Out for Delivery</span>
+                              <span>Dispatch for Delivery</span>
                             </button>
                           )}
                           {isOutForDelivery && (

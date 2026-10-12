@@ -10,6 +10,7 @@ export const SHIPMENT_STATUSES = [
     "VERIFIED",
     "READY_FOR_DISPATCH",
     "IN_TRANSIT",
+    "ARRIVED_AT_FACILITY",
     "OUT_FOR_DELIVERY",
     "DELIVERED",
     // Exception / Hold Stages
@@ -436,18 +437,21 @@ const shipmentSchema = new mongoose.Schema(
             country: { type: String, default: "" }
         },
         // Financial invoice charges summary
-        charges: {
-            freight: { type: Number, default: 0 },
-            fuelSurcharge: { type: Number, default: 0 },
-            customsHandling: { type: Number, default: 0 },
-            total: { type: Number, default: 0 }
-        }
-    },
-    {
-        // Automatically injects createdAt and updatedAt ISO timestamp fields
-        timestamps: true
+    charges: {
+        freight: { type: Number, default: 0 },
+        fuelSurcharge: { type: Number, default: 0 },
+        customsHandling: { type: Number, default: 0 },
+        total: { type: Number, default: 0 }
     }
-);
+},
+{
+    // Automatically injects createdAt and updatedAt ISO timestamp fields
+    timestamps: true
+});
+
+// Operational query performance indexes
+shipmentSchema.index({ sender: 1, createdAt: -1 });
+shipmentSchema.index({ createdAt: -1 });
 
 // Pre-save hook: ensure shipmentStatus mirrors currentStatus and weightKg/dimensions remain synced
 shipmentSchema.pre("save", function (next) {

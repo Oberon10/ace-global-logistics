@@ -8,10 +8,20 @@ import {
   Package, 
   Navigation, 
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Building2,
+  ChevronDown
 } from 'lucide-react';
+import { getCustomerStatusDescription, getCustomerStatusShort } from '../utils/statusUtils';
 
-export default function StatusBadge({ status, className = '' }) {
+export default function StatusBadge({ 
+  status, 
+  className = '', 
+  customerMode = false, 
+  showDescription = false,
+  clickable = false,
+  onClick = null
+}) {
   const norm = (status || '').toUpperCase().trim().replace(/_/g, ' ');
 
   let badgeClass = 'ace-badge-neutral';
@@ -26,6 +36,10 @@ export default function StatusBadge({ status, className = '' }) {
     badgeClass = 'ace-badge-out';
     Icon = Navigation;
     text = 'OUT FOR DELIVERY';
+  } else if (norm === 'ARRIVED AT FACILITY' || norm === 'ARRIVED FACILITY') {
+    badgeClass = 'ace-badge-facility';
+    Icon = Building2;
+    text = 'ARRIVED AT FACILITY';
   } else if (norm === 'IN TRANSIT' || norm === 'TRANSIT' || norm === 'ACTIVE') {
     badgeClass = 'ace-badge-transit';
     Icon = Truck;
@@ -38,7 +52,7 @@ export default function StatusBadge({ status, className = '' }) {
     badgeClass = 'ace-badge-verified';
     Icon = ShieldCheck;
     text = 'VERIFIED';
-  } else if (norm === 'PENDING VERIFICATION' || norm === 'ORDER CREATED' || norm === 'PENDING' || norm === 'PROCESSING') {
+  } else if (norm === 'PENDING VERIFICATION' || norm === 'ORDER CREATED' || norm === 'PENDING' || norm === 'PROCESSING' || norm === 'PENDING INTAKE') {
     badgeClass = 'ace-badge-pending';
     Icon = Clock;
     text = norm === 'ORDER CREATED' ? 'ORDER CREATED' : 'PENDING VERIFICATION';
@@ -64,11 +78,26 @@ export default function StatusBadge({ status, className = '' }) {
     text = 'CANCELLED';
   }
 
+  // Adjust display text for customer-facing views if requested
+  if (showDescription) {
+    text = getCustomerStatusDescription(status);
+  } else if (customerMode) {
+    text = getCustomerStatusShort(status);
+  }
+
+  const tooltip = getCustomerStatusDescription(status);
+
   return (
-    <span className={`ace-badge ${badgeClass} ${className}`}>
+    <span 
+      className={`ace-badge ${badgeClass} ${className} ${clickable ? 'ace-badge-clickable' : ''}`}
+      title={tooltip}
+      onClick={onClick}
+      style={clickable ? { cursor: 'pointer', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px' } : undefined}
+    >
       <span className="ace-badge-dot" />
-      <Icon size={12} strokeWidth={2.5} />
+      <Icon size={12} strokeWidth={2.5} style={{ flexShrink: 0 }} />
       <span>{text}</span>
+      {clickable && <ChevronDown size={11} strokeWidth={2.5} style={{ opacity: 0.7, marginLeft: '2px' }} />}
     </span>
   );
 }

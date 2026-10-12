@@ -56,12 +56,12 @@ app.use(helmet());
 const allowedOrigins = [
     // Client URL defined in .env (e.g., https://ace-app-dusky.vercel.app)
     process.env.CLIENT_URL,
+    process.env.FRONTEND_URL,
     // Production Vercel deployment URL
     "https://ace-app-dusky.vercel.app",
-    // Local Vite development servers
+    // Local Vite and Next.js development servers
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    // Standard alternative local development servers
     "http://localhost:3000",
     "http://127.0.0.1:3000"
 ].filter(Boolean);
@@ -71,7 +71,7 @@ app.use(
     cors({
         origin: (origin, callback) => {
             // Allow server-to-server requests or matching client origin domains
-            if (!origin || allowedOrigins.includes(origin)) {
+            if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
                 callback(null, true);
             } else {
                 callback(null, true);
@@ -100,14 +100,19 @@ app.get("/", (req, res) => {
 });
 
 // Dedicated health endpoint providing system status information
-app.get("/health", (req, res) => {
+const handleHealthCheck = (req, res) => {
     res.status(200).json({
         status: "UP",
         service: "ACE Logistics API",
-        database: "MongoDB (Mongoose)",
-        uptime: process.uptime()
+        database: isDatabaseConnected() ? "CONNECTED" : "DISCONNECTED",
+        databaseType: "MongoDB Atlas (Mongoose)",
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
     });
-});
+};
+
+app.get("/health", handleHealthCheck);
+app.get("/api/health", handleHealthCheck);
 
 // Database connection verification guard: ensure MongoDB Atlas is connected before executing API routes
 app.use("/api", (req, res, next) => {

@@ -59,7 +59,7 @@ router.post(
  */
 router.patch(
     "/:id/verify",
-    optionalAuthenticateToken,
+    authenticateToken,
     verifyShipment
 );
 
@@ -70,7 +70,7 @@ router.patch(
  */
 router.patch(
     "/:id/status",
-    optionalAuthenticateToken,
+    authenticateToken,
     updateShipmentStatus
 );
 

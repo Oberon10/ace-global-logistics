@@ -29,8 +29,10 @@ import {
   User,
   Edit3,
   Scale,
-  Send
+  Send,
+  Building2
 } from 'lucide-react';
+import { getCustomerStatusDescription, getCustomerStatusShort } from '../utils/statusUtils';
 
 export default function CustomerDashboardView({ 
   shipments = [], 
@@ -156,6 +158,10 @@ export default function CustomerDashboardView({
     const st = normalizeStatus(s.status, s.statusRaw);
     return st === 'IN_TRANSIT';
   }).length;
+  const arrivedAtFacilityCount = customerShipments.filter(s => {
+    const st = normalizeStatus(s.status, s.statusRaw);
+    return st === 'ARRIVED_AT_FACILITY';
+  }).length;
   const outForDeliveryCount = customerShipments.filter(s => {
     const st = normalizeStatus(s.status, s.statusRaw);
     return st === 'OUT_FOR_DELIVERY';
@@ -169,10 +175,10 @@ export default function CustomerDashboardView({
     return ['CANCELLED', 'REJECTED', 'DELIVERY_FAILED', 'RETURNED'].includes(st);
   }).length;
 
-  // Active in-transit shipment belonging strictly to this customer
+  // Active in-transit or near-delivery shipment belonging strictly to this customer
   const activeInTransitShipment = customerShipments.find(s => {
     const st = normalizeStatus(s.status, s.statusRaw);
-    return st === 'IN_TRANSIT';
+    return st === 'IN_TRANSIT' || st === 'ARRIVED_AT_FACILITY' || st === 'OUT_FOR_DELIVERY';
   }) || null;
 
   // Table filtering and search within this customer's records
@@ -184,6 +190,8 @@ export default function CustomerDashboardView({
     if (flt !== 'ALL') {
       if (flt === 'PENDING' || flt === 'PENDING_VERIFICATION' || flt === 'PENDING_INTAKE') {
         matchesFilter = (st === 'PENDING' || st === 'PENDING_VERIFICATION' || st === 'PENDING_INTAKE' || st === 'ORDER_CREATED');
+      } else if (flt === 'IN_TRANSIT' || flt === 'IN TRANSIT') {
+        matchesFilter = (st === 'IN_TRANSIT');
       } else {
         matchesFilter = (st === flt);
       }
@@ -477,11 +485,31 @@ export default function CustomerDashboardView({
               </div>
             </div>
             <div style={{ fontSize: '11.5px', color: '#0284c7', marginTop: '10px', fontWeight: 500 }}>
-              Active carrier linehaul
+              Your shipment is on its way
             </div>
           </div>
 
-          {/* 4. OUT FOR DELIVERY */}
+          {/* 4. ARRIVED AT FACILITY */}
+          <div className="ace-card" style={{ borderLeft: '3px solid #6366F1' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  AT FACILITY
+                </span>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#4F46E5', marginTop: '4px', lineHeight: 1 }}>
+                  {arrivedAtFacilityCount}
+                </div>
+              </div>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4F46E5' }}>
+                <Building2 size={18} />
+              </div>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#4F46E5', marginTop: '10px', fontWeight: 500 }}>
+              Received at logistics facility
+            </div>
+          </div>
+
+          {/* 5. OUT FOR DELIVERY */}
           <div className="ace-card" style={{ borderLeft: '3px solid #0891B2' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
@@ -497,11 +525,11 @@ export default function CustomerDashboardView({
               </div>
             </div>
             <div style={{ fontSize: '11.5px', color: '#0891B2', marginTop: '10px', fontWeight: 500 }}>
-              Final mile courier en route
+              Approaching your destination
             </div>
           </div>
 
-          {/* 5. DELIVERED */}
+          {/* 6. DELIVERED */}
           <div className="ace-card" style={{ borderLeft: '3px solid #10B981' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
@@ -517,7 +545,7 @@ export default function CustomerDashboardView({
               </div>
             </div>
             <div style={{ fontSize: '11.5px', color: '#059669', marginTop: '10px', fontWeight: 500 }}>
-              Completed consignments
+              Successfully delivered
             </div>
           </div>
         </div>
@@ -677,7 +705,8 @@ export default function CustomerDashboardView({
                 { id: 'ALL', label: 'ALL' },
                 { id: 'PENDING_VERIFICATION', label: 'PENDING INTAKE' },
                 { id: 'VERIFIED', label: 'VERIFIED' },
-                { id: 'IN TRANSIT', label: 'IN TRANSIT' },
+                { id: 'IN_TRANSIT', label: 'IN TRANSIT' },
+                { id: 'ARRIVED_AT_FACILITY', label: 'ARRIVED AT FACILITY' },
                 { id: 'OUT_FOR_DELIVERY', label: 'OUT FOR DELIVERY' },
                 { id: 'DELIVERED', label: 'DELIVERED' },
                 { id: 'CANCELLED', label: 'CANCELLED' }
@@ -758,6 +787,8 @@ export default function CustomerDashboardView({
             shipments={filteredShipments}
             onSelectShipment={onSelectShipment}
             onViewReceipt={onViewReceipt}
+            customerMode={true}
+            activeRole="customer"
             emptyMessage={`No shipments found matching status "${filterStatus}" or search term.`}
           />
         )}

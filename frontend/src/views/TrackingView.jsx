@@ -117,6 +117,7 @@ export default function TrackingView({
     const isCancelled = rawStatus === 'CANCELLED';
     const isDelivered = rawStatus === 'DELIVERED';
     const isOutForDelivery = rawStatus === 'OUT_FOR_DELIVERY';
+    const isArrivedAtFacility = rawStatus === 'ARRIVED_AT_FACILITY';
     const isInTransit = rawStatus === 'IN_TRANSIT';
     const isReadyForDispatch = rawStatus === 'READY_FOR_DISPATCH';
     const isVerified = rawStatus === 'VERIFIED';
@@ -176,9 +177,9 @@ export default function TrackingView({
     // Step 3: Ready for Dispatch
     const s3Status = isPending ? 'future' : isVerified ? 'active' : 'completed';
     // Step 4: In Transit
-    const s4Status = (isPending || isVerified) ? 'future' : (isReadyForDispatch || isInTransit) ? 'active' : (isOutForDelivery || isDelivered) ? 'completed' : 'future';
+    const s4Status = (isPending || isVerified) ? 'future' : (isReadyForDispatch || isInTransit) ? 'active' : (isArrivedAtFacility || isOutForDelivery || isDelivered) ? 'completed' : 'future';
     // Step 5: Out for Delivery
-    const s5Status = isDelivered ? 'completed' : isOutForDelivery ? 'active' : 'future';
+    const s5Status = isDelivered ? 'completed' : (isOutForDelivery || isArrivedAtFacility) ? 'active' : 'future';
     // Step 6: Delivered
     const s6Status = isDelivered ? 'completed' : 'future';
 
@@ -209,14 +210,14 @@ export default function TrackingView({
         name: 'Dispatched & In Transit',
         location: shipment?.currentLocation || 'Linehaul Transit',
         status: s4Status,
-        date: isInTransit ? 'Satellite Monitored' : (isOutForDelivery || isDelivered) ? 'Waypoint Cleared' : 'Scheduled'
+        date: isInTransit ? 'Satellite Monitored' : (isArrivedAtFacility || isOutForDelivery || isDelivered) ? 'Waypoint Cleared' : 'Scheduled'
       },
       {
         id: 5,
-        name: 'Out for Delivery',
+        name: isArrivedAtFacility ? 'Arrived at Facility Hub' : 'Out for Delivery',
         location: shipment?.receiver?.city || shipment?.destination || 'Destination Depot',
         status: s5Status,
-        date: isOutForDelivery ? 'Courier En Route' : isDelivered ? 'Delivery Run Complete' : 'Pending Hub Arrival'
+        date: isArrivedAtFacility ? 'Received & Staged at Hub' : isOutForDelivery ? 'Courier En Route' : isDelivered ? 'Delivery Run Complete' : 'Pending Hub Arrival'
       },
       {
         id: 6,

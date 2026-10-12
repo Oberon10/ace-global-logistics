@@ -36,6 +36,7 @@ export const mapShipmentDoc = (b) => {
   const displayStatus = cleanStatus === 'PENDING' ? 'PENDING' :
                         cleanStatus === 'PENDING_VERIFICATION' ? 'PENDING' :
                         cleanStatus === 'IN_TRANSIT' ? 'IN TRANSIT' :
+                        cleanStatus === 'ARRIVED_AT_FACILITY' ? 'ARRIVED AT FACILITY' :
                         cleanStatus === 'READY_FOR_DISPATCH' ? 'READY FOR DISPATCH' :
                         cleanStatus === 'OUT_FOR_DELIVERY' ? 'OUT FOR DELIVERY' :
                         cleanStatus === 'DELIVERY_FAILED' ? 'DELIVERY FAILED' :
@@ -323,6 +324,23 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  // Real-time synchronization polling: periodically synchronizes live shipments and notifications across tabs and portals
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    const syncInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchLiveShipments();
+        fetchNotifications();
+        if (activeRole === 'admin') {
+          fetchAdminStats();
+        }
+      }
+    }, 15000); // 15-second background sync cycle
+
+    return () => clearInterval(syncInterval);
+  }, [isHydrated, activeRole]);
+
 
   // Theme toggler
   const toggleTheme = () => {
@@ -575,7 +593,7 @@ export function AppProvider({ children }) {
         headers,
         body: JSON.stringify({
           status: updates.status,
-          location: updates.currentLocation,
+          location: updates.currentLocation || updates.location,
           description: updates.description || updates.note,
           note: updates.note
         })
@@ -584,8 +602,9 @@ export function AppProvider({ children }) {
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.success) {
-        alert(data?.message || 'Failed to update shipment status in MongoDB Atlas.');
-        return;
+        const errorMsg = data?.message || 'Failed to update shipment status in MongoDB Atlas.';
+        console.warn('Status update failure notice:', errorMsg);
+        return { success: false, message: errorMsg };
       }
 
       if (data?.shipment) {
@@ -596,12 +615,14 @@ export function AppProvider({ children }) {
         }
         fetchNotifications();
         fetchAdminStats();
-        return updatedMapped;
+        fetchLiveShipments();
+        return { success: true, shipment: updatedMapped, ...updatedMapped };
       }
+
+      return { success: true, message: data?.message || 'Status updated successfully.' };
     } catch (err) {
       console.error('Backend MongoDB status update error:', err);
-      alert('Failed to connect to backend database to update status: ' + err.message);
-      return;
+      return { success: false, message: 'Failed to connect to backend database to update status: ' + err.message };
     }
   };
 
