@@ -819,17 +819,225 @@ body.dark-mode textarea::placeholder {
   color: #94A3B8;
 }
 
-/* Protect official printable receipt document from dark mode text inversion */
-#printable-receipt, #printable-receipt * {
-  color: #0F172A !important;
-}
+/* ===================================================
+   OFFICIAL PRINTABLE RECEIPT ISOLATION & TEXT CLARITY
+   Guarantees 100% crystal-clear contrast in both Light & Dark modes
+   =================================================== */
 #printable-receipt {
   background-color: #FFFFFF !important;
+  color: #0F172A !important;
 }
-#printable-receipt h1, #printable-receipt h2, #printable-receipt h3,
-#printable-receipt h4, #printable-receipt h5, #printable-receipt h6,
+
+/* Guard elements inside the receipt from leaking global dark mode text inversion */
+[data-theme="dark"] #printable-receipt,
+body.dark-mode #printable-receipt {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+}
+
+[data-theme="dark"] #printable-receipt strong,
+body.dark-mode #printable-receipt strong,
 #printable-receipt strong {
   color: #0A2540 !important;
+}
+
+[data-theme="dark"] #printable-receipt p,
+body.dark-mode #printable-receipt p,
+#printable-receipt p {
+  color: #475569 !important;
+}
+
+[data-theme="dark"] #printable-receipt label,
+body.dark-mode #printable-receipt label,
+#printable-receipt label {
+  color: #0A2540 !important;
+}
+
+/* Deep Navy Brand Header inside receipt: White & bright cyan text in ALL themes */
+#printable-receipt .receipt-brand-header,
+#printable-receipt div[style*="backgroundColor: #0A2540"],
+#printable-receipt div[style*="background-color: #0A2540"],
+[data-theme="dark"] #printable-receipt .receipt-brand-header,
+body.dark-mode #printable-receipt .receipt-brand-header,
+[data-theme="dark"] #printable-receipt div[style*="backgroundColor: #0A2540"],
+body.dark-mode #printable-receipt div[style*="backgroundColor: #0A2540"] {
+  background-color: #0A2540 !important;
+  color: #FFFFFF !important;
+}
+
+#printable-receipt .receipt-brand-header h1,
+#printable-receipt div[style*="backgroundColor: #0A2540"] h1,
+[data-theme="dark"] #printable-receipt .receipt-brand-header h1,
+body.dark-mode #printable-receipt .receipt-brand-header h1,
+[data-theme="dark"] #printable-receipt div[style*="backgroundColor: #0A2540"] h1,
+body.dark-mode #printable-receipt div[style*="backgroundColor: #0A2540"] h1 {
+  color: #FFFFFF !important;
+}
+
+#printable-receipt .receipt-brand-header span,
+#printable-receipt div[style*="backgroundColor: #0A2540"] span,
+[data-theme="dark"] #printable-receipt .receipt-brand-header span,
+body.dark-mode #printable-receipt .receipt-brand-header span,
+[data-theme="dark"] #printable-receipt div[style*="backgroundColor: #0A2540"] span,
+body.dark-mode #printable-receipt div[style*="backgroundColor: #0A2540"] span {
+  color: inherit;
+}
+
+/* Bright Blue Table Header: Pure White text on Blue in ALL themes */
+#printable-receipt thead tr,
+#printable-receipt tr[style*="backgroundColor: #0284C7"],
+#printable-receipt tr[style*="background-color: #0284C7"],
+[data-theme="dark"] #printable-receipt thead tr,
+body.dark-mode #printable-receipt thead tr,
+[data-theme="dark"] #printable-receipt tr[style*="backgroundColor: #0284C7"],
+body.dark-mode #printable-receipt tr[style*="backgroundColor: #0284C7"] {
+  background-color: #0284C7 !important;
+  color: #FFFFFF !important;
+}
+
+#printable-receipt thead th,
+#printable-receipt tr[style*="backgroundColor: #0284C7"] th,
+[data-theme="dark"] #printable-receipt thead th,
+body.dark-mode #printable-receipt thead th,
+[data-theme="dark"] #printable-receipt tr[style*="backgroundColor: #0284C7"] th,
+body.dark-mode #printable-receipt tr[style*="backgroundColor: #0284C7"] th {
+  color: #FFFFFF !important;
+}
+
+/* White Barcode & Tracking Box inside the Navy Banner */
+#printable-receipt .receipt-tracking-box,
+[data-theme="dark"] #printable-receipt .receipt-tracking-box,
+body.dark-mode #printable-receipt .receipt-tracking-box {
+  background-color: #FFFFFF !important;
+}
+
+#printable-receipt .receipt-tracking-box div,
+#printable-receipt .receipt-tracking-box span,
+[data-theme="dark"] #printable-receipt .receipt-tracking-box div,
+body.dark-mode #printable-receipt .receipt-tracking-box div,
+[data-theme="dark"] #printable-receipt .receipt-tracking-box span,
+body.dark-mode #printable-receipt .receipt-tracking-box span {
+  background-color: transparent !important;
+}
+
+/* Table rows inside the receipt: High contrast on white paper */
+#printable-receipt tbody tr td,
+[data-theme="dark"] #printable-receipt tbody tr td,
+body.dark-mode #printable-receipt tbody tr td {
+  color: #0F172A !important;
+}
+
+/* Hub Routing Banner inside the receipt */
+#printable-receipt .receipt-routing-banner,
+[data-theme="dark"] #printable-receipt .receipt-routing-banner,
+body.dark-mode #printable-receipt .receipt-routing-banner {
+  background-color: #F8FAFC !important;
+  border-color: #0A2540 !important;
+}
+
+/* Official Stamps inside the receipt */
+#printable-receipt .receipt-prepaid-stamp,
+[data-theme="dark"] #printable-receipt .receipt-prepaid-stamp,
+body.dark-mode #printable-receipt .receipt-prepaid-stamp {
+  color: #16A34A !important;
+  border-color: #16A34A !important;
+  background-color: rgba(240, 253, 244, 0.95) !important;
+}
+
+#printable-receipt .receipt-carrier-stamp,
+[data-theme="dark"] #printable-receipt .receipt-carrier-stamp,
+body.dark-mode #printable-receipt .receipt-carrier-stamp {
+  border-color: #0369A1 !important;
+  background-color: rgba(240, 249, 255, 0.85) !important;
+}
+
+/* Screen Modal Dialog for Receipt in Dark Mode */
+[data-theme="dark"] .ace-modal,
+body.dark-mode .ace-modal {
+  background-color: #0E1A29 !important;
+  border: 1px solid #1E3851 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .receipt-modal-screen-bar,
+body.dark-mode .receipt-modal-screen-bar {
+  background-color: #071422 !important;
+  border-bottom: 1px solid #1E3851 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="dark"] .receipt-modal-footer,
+body.dark-mode .receipt-modal-footer {
+  background-color: #071422 !important;
+  border-top: 1px solid #1E3851 !important;
+  color: #FFFFFF !important;
+}
+
+/* Ensure all specific colors inside the receipt maintain their exact intended paper values */
+#printable-receipt div[style*="color: #0369A1"],
+[data-theme="dark"] #printable-receipt div[style*="color: #0369A1"],
+body.dark-mode #printable-receipt div[style*="color: #0369A1"],
+#printable-receipt span[style*="color: #0369A1"],
+[data-theme="dark"] #printable-receipt span[style*="color: #0369A1"],
+body.dark-mode #printable-receipt span[style*="color: #0369A1"] {
+  color: #0369A1 !important;
+}
+
+#printable-receipt div[style*="color: #0A2540"],
+[data-theme="dark"] #printable-receipt div[style*="color: #0A2540"],
+body.dark-mode #printable-receipt div[style*="color: #0A2540"],
+#printable-receipt span[style*="color: #0A2540"],
+[data-theme="dark"] #printable-receipt span[style*="color: #0A2540"],
+body.dark-mode #printable-receipt span[style*="color: #0A2540"] {
+  color: #0A2540 !important;
+}
+
+#printable-receipt div[style*="color: #0F172A"],
+[data-theme="dark"] #printable-receipt div[style*="color: #0F172A"],
+body.dark-mode #printable-receipt div[style*="color: #0F172A"],
+#printable-receipt span[style*="color: #0F172A"],
+[data-theme="dark"] #printable-receipt span[style*="color: #0F172A"],
+body.dark-mode #printable-receipt span[style*="color: #0F172A"] {
+  color: #0F172A !important;
+}
+
+#printable-receipt div[style*="color: #475569"],
+[data-theme="dark"] #printable-receipt div[style*="color: #475569"],
+body.dark-mode #printable-receipt div[style*="color: #475569"],
+#printable-receipt span[style*="color: #475569"],
+[data-theme="dark"] #printable-receipt span[style*="color: #475569"],
+body.dark-mode #printable-receipt span[style*="color: #475569"] {
+  color: #475569 !important;
+}
+
+#printable-receipt div[style*="color: #64748B"],
+[data-theme="dark"] #printable-receipt div[style*="color: #64748B"],
+body.dark-mode #printable-receipt div[style*="color: #64748B"],
+#printable-receipt span[style*="color: #64748B"],
+[data-theme="dark"] #printable-receipt span[style*="color: #64748B"],
+body.dark-mode #printable-receipt span[style*="color: #64748B"] {
+  color: #64748B !important;
+}
+
+#printable-receipt div[style*="color: #16A34A"],
+[data-theme="dark"] #printable-receipt div[style*="color: #16A34A"],
+body.dark-mode #printable-receipt div[style*="color: #16A34A"],
+#printable-receipt span[style*="color: #16A34A"],
+[data-theme="dark"] #printable-receipt span[style*="color: #16A34A"],
+body.dark-mode #printable-receipt span[style*="color: #16A34A"] {
+  color: #16A34A !important;
+}
+
+#printable-receipt [style*="backgroundColor: #F8FAFC"],
+[data-theme="dark"] #printable-receipt [style*="backgroundColor: #F8FAFC"],
+body.dark-mode #printable-receipt [style*="backgroundColor: #F8FAFC"] {
+  background-color: #F8FAFC !important;
+}
+
+#printable-receipt [style*="backgroundColor: #FFFFFF"],
+[data-theme="dark"] #printable-receipt [style*="backgroundColor: #FFFFFF"],
+body.dark-mode #printable-receipt [style*="backgroundColor: #FFFFFF"] {
+  background-color: #FFFFFF !important;
 }
 
 /* Universal High-Contrast Overrides for Hardcoded Dark Colors in Dark Mode */

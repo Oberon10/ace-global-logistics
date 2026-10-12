@@ -168,7 +168,7 @@ function QrCodeSvg({ value = 'ACE-2T34-79011' }) {
 // Circular Certified Carrier Stamp Component
 function CertifiedCarrierStamp({ date = '2026-09-10' }) {
   return (
-    <div style={{
+    <div className="receipt-carrier-stamp" style={{
       width: '92px',
       height: '92px',
       borderRadius: '50%',
@@ -344,7 +344,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
         {/* ===================================================
             MODAL ACTION BAR (Screen Only)
             =================================================== */}
-        <div className="no-print" style={{
+        <div className="no-print receipt-modal-screen-bar" style={{
           backgroundColor: '#0A2540',
           color: '#FFFFFF',
           padding: '12px 20px',
@@ -453,7 +453,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
           boxSizing: 'border-box'
         }}>
           {/* HEADER STRIP */}
-          <div style={{
+          <div className="receipt-brand-header" style={{
             backgroundColor: '#0A2540',
             color: '#FFFFFF',
             borderRadius: '6px',
@@ -520,7 +520,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
             </div>
 
             {/* Right: Security Codes & Tracking */}
-            <div style={{
+            <div className="receipt-tracking-box" style={{
               display: 'flex',
               alignItems: 'center',
               gap: '14px',
@@ -632,7 +632,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
           </div>
 
           {/* HUB ROUTING BANNER */}
-          <div style={{
+          <div className="receipt-routing-banner" style={{
             backgroundColor: '#F8FAFC',
             border: '1.5px solid #0A2540',
             borderRadius: '6px',
@@ -701,7 +701,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
             </div>
 
             <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid #CBD5E1', borderRadius: '4px' }}>
-              <table style={{
+              <table className="receipt-cargo-table" style={{
                 width: '100%',
                 minWidth: '600px',
                 fontSize: '10.5px',
@@ -835,7 +835,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
               gap: '10px'
             }}>
               {/* Slanted PREPAID Stamp */}
-              <div style={{
+              <div className="receipt-prepaid-stamp" style={{
                 border: '3px solid #16A34A',
                 borderRadius: '8px',
                 padding: '8px 12px',
@@ -911,7 +911,7 @@ export default function ReceiptModal({ shipment, isOpen, onClose }) {
         {/* ===================================================
             MODAL ACTION BAR (Screen Only - Bottom)
             =================================================== */}
-        <div className="no-print" style={{
+        <div className="no-print receipt-modal-footer" style={{
           backgroundColor: '#F8FAFC',
           padding: '12px 20px',
           borderTop: '1px solid #E2E8F0',
