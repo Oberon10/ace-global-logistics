@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { KNOWN_ACCOUNTS, USERS_LIST } from '../data/shipments';
+import { getApiBase, apiFetch } from '../utils/apiConfig';
 import { 
   Shield, 
   Lock, 
@@ -22,16 +23,6 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-
-const getApiBase = () => {
-  if (typeof window !== 'undefined') {
-    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:5000';
-    }
-  }
-  return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
-};
 
 // Helper to retrieve all registered customers (merging pre-configured accounts with localStorage)
 export function getRegisteredCustomers() {
@@ -249,9 +240,7 @@ export default function LoginView({
 
     // Attempt Backend Express API
     try {
-      const backendUrl = `${getApiBase()}/api/auth/login`;
-
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, password: cleanPassword, portal: selectedPortal })
@@ -339,9 +328,7 @@ export default function LoginView({
     const cleanEmail = signupEmail.trim().toLowerCase();
 
     try {
-      const backendUrl = `${getApiBase()}/api/auth/register`;
-
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

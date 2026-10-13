@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { INITIAL_SHIPMENTS } from '../data/shipments';
+import { getApiBase, resolveApiBase, apiFetch } from '../utils/apiConfig';
 
 const AppContext = createContext(null);
 
@@ -173,16 +174,7 @@ export function AppProvider({ children }) {
   // Theme State
   const [theme, setTheme] = useState('light');
 
-  // API Base URL helper
-  const getApiBase = () => {
-    if (typeof window !== 'undefined') {
-      if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:5000';
-      }
-    }
-    return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
-  };
+
 
   // Central Reactive Shipments Repository strictly retrieved from MongoDB Atlas
   const [shipments, setShipments] = useState([]);
@@ -206,10 +198,9 @@ export function AppProvider({ children }) {
   // Fetch in-app notifications
   const fetchNotifications = async () => {
     try {
-      const backendUrl = `${getApiBase()}/api/notifications`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch(backendUrl, { headers });
+      const res = await apiFetch('/api/notifications', { headers });
       if (res.ok) {
         const data = await res.json();
         if (data?.success && Array.isArray(data.notifications)) {
@@ -224,10 +215,9 @@ export function AppProvider({ children }) {
 
   const handleMarkNotificationRead = async (id) => {
     try {
-      const backendUrl = `${getApiBase()}/api/notifications/${id}/read`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      await fetch(backendUrl, { method: 'PATCH', headers });
+      await apiFetch(`/api/notifications/${id}/read`, { method: 'PATCH', headers });
       setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n));
       setUnreadNotifCount(prev => Math.max(0, prev - 1));
     } catch (e) {
@@ -237,10 +227,9 @@ export function AppProvider({ children }) {
 
   const handleMarkAllNotificationsRead = async () => {
     try {
-      const backendUrl = `${getApiBase()}/api/notifications/read-all`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      await fetch(backendUrl, { method: 'PATCH', headers });
+      await apiFetch('/api/notifications/read-all', { method: 'PATCH', headers });
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadNotifCount(0);
     } catch (e) {
@@ -252,10 +241,9 @@ export function AppProvider({ children }) {
   const fetchAdminStats = async () => {
     try {
       setIsLoadingStats(true);
-      const backendUrl = `${getApiBase()}/api/shipments/stats/admin`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch(backendUrl, { headers });
+      const res = await apiFetch('/api/shipments/stats/admin', { headers });
       if (res.ok) {
         const data = await res.json();
         if (data?.success) {
@@ -274,10 +262,9 @@ export function AppProvider({ children }) {
   // Fetch live shipments strictly from MongoDB Atlas
   const fetchLiveShipments = async () => {
     try {
-      const backendUrl = `${getApiBase()}/api/shipments`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch(backendUrl, { headers });
+      const res = await apiFetch('/api/shipments', { headers });
       if (res.ok) {
         const data = await res.json();
         if (data?.success && Array.isArray(data.shipments)) {
@@ -314,9 +301,16 @@ export function AppProvider({ children }) {
         setCurrentUser(JSON.parse(savedUser));
       }
 
-      fetchLiveShipments();
-      fetchNotifications();
-      fetchAdminStats();
+      // Discover active local backend port dynamically, then load live MongoDB data
+      resolveApiBase().then(() => {
+        fetchLiveShipments();
+        fetchNotifications();
+        fetchAdminStats();
+      }).catch(() => {
+        fetchLiveShipments();
+        fetchNotifications();
+        fetchAdminStats();
+      });
     } catch (err) {
       console.warn('Hydration error:', err);
     } finally {
@@ -398,8 +392,7 @@ export function AppProvider({ children }) {
 
     // 1. Query MongoDB Atlas directly through the backend API
     try {
-      const backendUrl = `${getApiBase()}/api/shipments/track/${encodeURIComponent(cleanNumber)}`;
-      const res = await fetch(backendUrl);
+      const res = await apiFetch(`/api/shipments/track/${encodeURIComponent(cleanNumber)}`);
       if (res.ok) {
         const data = await res.json();
         if (data?.success && data?.shipment) {
@@ -465,8 +458,6 @@ export function AppProvider({ children }) {
 
     // Persist directly to MongoDB Atlas
     try {
-      const backendUrl = `${getApiBase()}/api/shipments`;
-      
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -474,7 +465,7 @@ export function AppProvider({ children }) {
       const rawWeight = Number(newShipment.package?.estimatedWeight || newShipment.package?.weightKg || 10);
       const rawDimensions = String(newShipment.package?.estimatedDimensions || newShipment.package?.dimensions || '60 × 45 × 40 cm');
 
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch('/api/shipments', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -544,12 +535,11 @@ export function AppProvider({ children }) {
   // Staff Physical Package Verification
   const handleVerifyShipment = async (shipmentId, verificationData) => {
     try {
-      const backendUrl = `${getApiBase()}/api/shipments/${encodeURIComponent(shipmentId)}/verify`;
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch(`/api/shipments/${encodeURIComponent(shipmentId)}/verify`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify(verificationData)
@@ -582,13 +572,11 @@ export function AppProvider({ children }) {
   // Shipment Status Update (Staff & Admin, Persisted to MongoDB Atlas adhering to transition rules)
   const handleUpdateShipmentStatus = async (shipmentId, updates) => {
     try {
-      const backendUrl = `${getApiBase()}/api/shipments/${encodeURIComponent(shipmentId)}/status`;
-      
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch(`/api/shipments/${encodeURIComponent(shipmentId)}/status`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({
@@ -629,13 +617,11 @@ export function AppProvider({ children }) {
   // Shipment Cancellation (Staff & Admin, Persisted to MongoDB Atlas)
   const handleCancelShipment = async (shipmentId, reason, location = '') => {
     try {
-      const backendUrl = `${getApiBase()}/api/shipments/${encodeURIComponent(shipmentId)}/cancel`;
-      
       const token = typeof window !== 'undefined' ? localStorage.getItem('ace_auth_token') : null;
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch(`/api/shipments/${encodeURIComponent(shipmentId)}/cancel`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({

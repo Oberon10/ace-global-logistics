@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { COUNTRY_LIST, getCitiesForCountry } from '../data/locations';
+import { apiFetch } from '../utils/apiConfig';
 
 /**
  * Official Vector WhatsApp Logo Component
@@ -562,19 +563,7 @@ export default function AiAssistant({
 
     // Persist prompt to MongoDB via backend /api/chat endpoint
     try {
-      const getChatApiBase = () => {
-        if (typeof window !== 'undefined') {
-          if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            return 'http://localhost:5000';
-          }
-        }
-        return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
-      };
-
-      const chatApiUrl = `${getChatApiBase()}/api/chat`;
-
-      fetch(chatApiUrl, {
+      apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

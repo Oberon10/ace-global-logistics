@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import { USERS_LIST } from '../data/shipments';
+import { getApiBase, apiFetch } from '../utils/apiConfig';
 import { 
   Users, 
   Plus, 
@@ -22,8 +23,8 @@ import {
   ArrowRight, 
   Building2, 
   Truck, 
-  RefreshCw,
-  Shield
+  RefreshCw, 
+  Shield 
 } from 'lucide-react';
 
 export default function UserManagementView({ 
@@ -33,15 +34,6 @@ export default function UserManagementView({
   initialFilter = 'ALL',
   currentView = 'users'
 }) {
-  const getApiBase = () => {
-    if (typeof window !== 'undefined') {
-      if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:5000';
-      }
-    }
-    return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
-  };
 
   const [users, setUsers] = useState([]);
   const [activeFilter, setActiveFilter] = useState(initialFilter); // 'ALL', 'Staff', 'Customer', 'Admin'
@@ -52,8 +44,7 @@ export default function UserManagementView({
   const fetchMongoUsers = async () => {
     try {
       setIsLoadingUsers(true);
-      const backendUrl = `${getApiBase()}/api/auth/users`;
-      const res = await fetch(backendUrl);
+      const res = await apiFetch('/api/auth/users');
       if (res.ok) {
         const data = await res.json();
         if (data?.success && Array.isArray(data.users)) {
@@ -125,7 +116,7 @@ export default function UserManagementView({
     setResetNotice({ type: '', text: '' });
     try {
       const targetId = resetModalUser._id || resetModalUser.id || resetModalUser.email;
-      const res = await fetch(`${getApiBase()}/api/auth/users/${encodeURIComponent(targetId)}/reset-password`, {
+      const res = await apiFetch(`/api/auth/users/${encodeURIComponent(targetId)}/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newPassword: resetNewPassword.trim() })
@@ -163,8 +154,7 @@ export default function UserManagementView({
 
     // Sync status change to backend MongoDB
     try {
-      const backendUrl = `${getApiBase()}/api/auth/users/${id}`;
-      const res = await fetch(backendUrl, {
+      const res = await apiFetch(`/api/auth/users/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: nextStatus })
@@ -191,8 +181,7 @@ export default function UserManagementView({
   const handleDeleteUser = async (id) => {
     if (!window.confirm('Are you sure you want to permanently delete this account from MongoDB Atlas?')) return;
     try {
-      const backendBase = getApiBase();
-      const res = await fetch(`${backendBase}/api/auth/users/${encodeURIComponent(id)}`, {
+      const res = await apiFetch(`/api/auth/users/${encodeURIComponent(id)}`, {
         method: 'DELETE'
       });
       const data = await res.json().catch(() => null);
@@ -220,7 +209,7 @@ export default function UserManagementView({
     const backendBase = getApiBase();
 
     try {
-      let endpoint = `${backendBase}/api/auth/register`;
+      let endpoint = '/api/auth/register';
       let payload = {
         name: newUserName.trim(),
         email: newUserEmail.trim().toLowerCase(),
@@ -231,7 +220,7 @@ export default function UserManagementView({
       };
 
       if (newUserRole === 'Staff') {
-        endpoint = `${backendBase}/api/auth/staff`;
+        endpoint = '/api/auth/staff';
         payload = {
           name: newUserName.trim(),
           email: newUserEmail.trim().toLowerCase(),
@@ -241,7 +230,7 @@ export default function UserManagementView({
           phone: newUserPhone
         };
       } else if (newUserRole === 'Admin') {
-        endpoint = `${backendBase}/api/auth/admin`;
+        endpoint = '/api/auth/admin';
         payload = {
           name: newUserName.trim(),
           email: newUserEmail.trim().toLowerCase(),
@@ -253,7 +242,7 @@ export default function UserManagementView({
         };
       }
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
