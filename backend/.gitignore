@@ -120,4 +120,7 @@ dist
 # Local database directory
 data/
 
+# Active port discovery metadata
+.active-port.json
+
 # End of https://mrkandreev.name/snippets/gitignore-generator/#Node

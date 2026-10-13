@@ -36,3 +36,7 @@ AGENTS.md
 # Database data directories
 backend/data/
 data/
+
+# Active port discovery metadata
+.active-port.json
+*.active-port.json
