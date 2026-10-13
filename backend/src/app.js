@@ -26,6 +26,75 @@ import chatRoutes from "./routes/chatRoutes.js";
 // Import notification route endpoints (in-app shipment and dispatch alerts)
 import notificationRoutes from "./routes/notificationRoutes.js";
 
+// Import Node.js filesystem and path utilities for local port coordination
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Writes active port metadata to local discovery files for frontend coordination.
+ */
+const writeActivePortDescriptor = (port) => {
+    try {
+        const payload = JSON.stringify({
+            port: Number(port),
+            url: `http://localhost:${port}`,
+            service: "ace-logistics-backend",
+            pid: process.pid,
+            updatedAt: new Date().toISOString()
+        }, null, 2);
+
+        // 1. Backend root
+        const backendPath = path.resolve(__dirname, "../.active-port.json");
+        fs.writeFileSync(backendPath, payload, "utf8");
+
+        // 2. Workspace root
+        const rootPath = path.resolve(__dirname, "../../.active-port.json");
+        try { fs.writeFileSync(rootPath, payload, "utf8"); } catch {}
+
+        // 3. Frontend public folder (so Next.js client can fetch('/.active-port.json') with 0 overhead)
+        const frontendPublic = path.resolve(__dirname, "../../frontend/public/.active-port.json");
+        if (fs.existsSync(path.dirname(frontendPublic))) {
+            try { fs.writeFileSync(frontendPublic, payload, "utf8"); } catch {}
+        }
+
+        // 4. Frontend root folder
+        const frontendRoot = path.resolve(__dirname, "../../frontend/.active-port.json");
+        try { fs.writeFileSync(frontendRoot, payload, "utf8"); } catch {}
+    } catch (err) {
+        console.warn("⚠️ Notice: unable to write .active-port.json descriptor:", err.message);
+    }
+};
+
+const cleanupPortDescriptor = () => {
+    try {
+        const files = [
+            path.resolve(__dirname, "../.active-port.json"),
+            path.resolve(__dirname, "../../.active-port.json"),
+            path.resolve(__dirname, "../../frontend/.active-port.json"),
+            path.resolve(__dirname, "../../frontend/public/.active-port.json")
+        ];
+        for (const file of files) {
+            if (fs.existsSync(file)) {
+                try { fs.unlinkSync(file); } catch {}
+            }
+        }
+    } catch {}
+};
+
+process.on("exit", cleanupPortDescriptor);
+process.on("SIGINT", () => {
+    cleanupPortDescriptor();
+    process.exit(0);
+});
+process.on("SIGTERM", () => {
+    cleanupPortDescriptor();
+    process.exit(0);
+});
+
 // Initialize environment configuration from local .env file
 dotenv.config();
 
@@ -176,6 +245,9 @@ const listenWithPortFallback = (currentPort, maxPort) => {
             app.set("port", activePort);
             process.env.PORT = String(activePort);
 
+            // Write active port metadata descriptor for local frontend auto-coordination
+            writeActivePortDescriptor(activePort);
+
             console.log(`🚀 ACE Logistics Server running successfully on port ${activePort}`);
             console.log(`🌐 Base API URL: http://localhost:${activePort}`);
             console.log(`🍃 Database: Pure MongoDB Mongoose Architecture`);
@@ -209,8 +281,8 @@ const listenWithPortFallback = (currentPort, maxPort) => {
 const startServer = async () => {
     try {
         await connectDB();
-        // Seed default operational accounts into MongoDB
-        await seedDatabaseUsers();
+        // Seed default operational accounts into MongoDB asynchronously
+        seedDatabaseUsers().catch(err => console.warn("Seeding notice:", err.message));
     } catch (error) {
         console.warn("⚠️ Initial database connection warning:", error.message);
     }
